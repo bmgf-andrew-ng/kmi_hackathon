@@ -7,3 +7,14 @@
 
 # OS files
 .DS_Store
+
+# PoC — Python build artefacts
+__pycache__/
+*.pyc
+poc/mcp-servers/*/.venv/
+
+# PoC — Docker data volumes
+poc/data/
+
+# PoC — IDE / tooling
+.venv/

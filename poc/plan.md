@@ -11,22 +11,22 @@ Currently the repo has Claude Code config (agents, skills, playground) but zero 
 ## Phase 1 — Data Tier + MCP + First Skill (End-to-End)
 
 ### Step 1.1: Docker Compose for data stores
-- **Create** `docker-compose.yml` with:
+- **Create** `poc/docker-compose.yml` with:
   - `neo4j:5.26-community` (ports 7474, 7687)
   - `opensearchproject/opensearch:2.17.0` (port 9200)
   - `mcr.microsoft.com/azure-storage/azurite:3.33.0` (port 10000)
-- **Create** `.env` with connection strings (already gitignored)
-- **Verify**: `docker compose up -d && docker compose ps` — all healthy
+- **Create** `poc/.env` with connection strings (already gitignored)
+- **Verify**: `cd poc && docker compose up -d && docker compose ps` — all healthy
 
 ### Step 1.2: Seed Neo4j with strategy knowledge graph
-- **Create** `seed/neo4j/seed.cypher` — Documents, Themes, Indicators, Countries, FundingAreas with relationships (COVERS_THEME, MEASURED_BY, PRIORITY_IN, ALLOCATES_TO, SUPPORTS_THEME)
-- **Create** `seed/neo4j/seed.sh` — runs cypher-shell against the container
+- **Create** `poc/seed/neo4j/seed.cypher` — Documents, Themes, Indicators, Countries, FundingAreas with relationships (COVERS_THEME, MEASURED_BY, PRIORITY_IN, ALLOCATES_TO, SUPPORTS_THEME)
+- **Create** `poc/seed/neo4j/seed.sh` — runs cypher-shell against the container
 - **Verify**: Neo4j browser at `http://localhost:7474` shows the graph
 
 ### Step 1.3: Seed OpenSearch with document chunks
-- **Create** `seed/opensearch/create-index.sh` — index mapping for `strategy-chunks`
-- **Create** `seed/opensearch/chunks.ndjson` — 10-20 representative document chunks
-- **Create** `seed/opensearch/seed.sh` — bulk index the data
+- **Create** `poc/seed/opensearch/create-index.sh` — index mapping for `strategy-chunks`
+- **Create** `poc/seed/opensearch/chunks.ndjson` — 10-20 representative document chunks
+- **Create** `poc/seed/opensearch/seed.sh` — bulk index the data
 - **Verify**: `curl "http://localhost:9200/strategy-chunks/_search?q=maternal+health"` returns hits
 
 ### Step 1.4: Configure Neo4j MCP Server
@@ -36,8 +36,8 @@ Currently the repo has Claude Code config (agents, skills, playground) but zero 
 - **Verify**: Restart Claude Code, run `/mcp` to confirm tools visible. Ask Claude: "Use the Neo4j MCP to get the database schema"
 
 ### Step 1.5: Build Strategy Review MCP Server (Python)
-- **Create** `mcp-servers/strategy-review/pyproject.toml` — deps: `mcp[cli]`, `opensearch-py`, `azure-storage-blob`
-- **Create** `mcp-servers/strategy-review/strategy_review_mcp/server.py` — FastMCP server with tools:
+- **Create** `poc/mcp-servers/strategy-review/pyproject.toml` — deps: `mcp[cli]`, `opensearch-py`, `azure-storage-blob`
+- **Create** `poc/mcp-servers/strategy-review/strategy_review_mcp/server.py` — FastMCP server with tools:
   - `search_documents(query, top_k)` — BM25 search on OpenSearch
   - `search_chunks(query, doc_id, top_k)` — granular chunk search
   - `get_page_image(doc_id, page_num)` — blob retrieval from Azurite (base64)
@@ -68,8 +68,8 @@ Currently the repo has Claude Code config (agents, skills, playground) but zero 
   Expected: skill → agent → MCP → Neo4j → results synthesised
 
 ### Step 1.9: `.devcontainer` setup
-- **Create** `.devcontainer/devcontainer.json` — Python 3.12, Node 22, port forwarding
-- **Create** `.devcontainer/docker-compose.devcontainer.yml` — workspace container linked to data tier
+- **Create** `poc/.devcontainer/devcontainer.json` — Python 3.12, Node 22, port forwarding
+- **Create** `poc/.devcontainer/docker-compose.devcontainer.yml` — workspace container linked to data tier
 - **Verify**: VS Code "Reopen in Container" — all services up, MCP tools available
 
 ---
@@ -78,7 +78,7 @@ Currently the repo has Claude Code config (agents, skills, playground) but zero 
 
 ### Step 2.1: Create `image-retrieval` sub-agent
 - `.claude/agents/image-retrieval.md` — uses `get_page_image` tool
-- Seed Azurite with sample page images (`seed/azurite/`)
+- Seed Azurite with sample page images (`poc/seed/azurite/`)
 
 ### Step 2.2: Create `gender-tech-review` skill
 - `.claude/skills/gender-tech-review/SKILL.md` — clone from strategy-review
@@ -89,7 +89,7 @@ Currently the repo has Claude Code config (agents, skills, playground) but zero 
 - Focus on FundingArea nodes, budget allocations, funding→theme relationships
 
 ### Step 2.4: Seed data script
-- **Create** `seed/seed-all.sh` — one command to seed all three stores
+- **Create** `poc/seed/seed-all.sh` — one command to seed all three stores
 
 ---
 
@@ -112,7 +112,7 @@ Currently the repo has Claude Code config (agents, skills, playground) but zero 
 
 | # | Step | Time | What |
 |---|------|------|------|
-| 1 | 1.1 | 10m | `docker-compose.yml` — data stores up |
+| 1 | 1.1 | 10m | `poc/docker-compose.yml` — data stores up |
 | 2 | 1.2 | 15m | Neo4j seed data |
 | 3 | 1.4 | 5m | Neo4j MCP in `.mcp.json` |
 | 4 | 1.6 | 10m | `graph-traversal` agent |
@@ -131,19 +131,19 @@ Currently the repo has Claude Code config (agents, skills, playground) but zero 
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `docker-compose.yml` | Create | Data tier (Neo4j, OpenSearch, Azurite) |
-| `.env` | Create | Connection strings (gitignored) |
-| `seed/neo4j/seed.cypher` | Create | Knowledge graph seed data |
-| `seed/opensearch/chunks.ndjson` | Create | Document chunk seed data |
-| `seed/neo4j/seed.sh` | Create | Neo4j seed runner |
-| `seed/opensearch/seed.sh` | Create | OpenSearch seed runner |
+| `poc/docker-compose.yml` | Create | Data tier (Neo4j, OpenSearch, Azurite) |
+| `poc/.env` | Create | Connection strings (gitignored) |
+| `poc/seed/neo4j/seed.cypher` | Create | Knowledge graph seed data |
+| `poc/seed/opensearch/chunks.ndjson` | Create | Document chunk seed data |
+| `poc/seed/neo4j/seed.sh` | Create | Neo4j seed runner |
+| `poc/seed/opensearch/seed.sh` | Create | OpenSearch seed runner |
 | `.mcp.json` | Modify | Add neo4j + strategy-review MCP servers |
-| `mcp-servers/strategy-review/` | Create | Custom Python MCP server |
+| `poc/mcp-servers/strategy-review/` | Create | Custom Python MCP server |
 | `.claude/agents/graph-traversal.md` | Create | Neo4j sub-agent |
 | `.claude/agents/document-search.md` | Create | Search sub-agent |
 | `.claude/skills/strategy-review/SKILL.md` | Create | First review topic skill |
-| `.devcontainer/devcontainer.json` | Create | VS Code devcontainer config |
-| `.devcontainer/docker-compose.devcontainer.yml` | Create | Devcontainer service |
+| `poc/.devcontainer/devcontainer.json` | Create | VS Code devcontainer config |
+| `poc/.devcontainer/docker-compose.devcontainer.yml` | Create | Devcontainer service |
 | `.claude/skills/gender-tech-review/SKILL.md` | Create | Gender Tech skill |
 | `.claude/skills/budget-review/SKILL.md` | Create | Budget skill |
 
