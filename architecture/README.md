@@ -1,12 +1,64 @@
-# Solution Architecture Review Playground
+# Architecture Review Toolkit
 
-A self-contained, browser-based tool for reviewing solution architecture diagrams. Upload a screenshot of your architecture, annotate problem areas, link feedback to specific components, and generate a structured review prompt ready to paste into Claude.
+Tools for reviewing and improving solution architecture designs. Annotate diagrams in the browser, run AI-powered reviews, and get structured improvement plans with local dev recommendations.
 
 ## Quick Start
+
+### 1. Annotate your architecture (Playground)
 
 ```bash
 open architecture-review-playground.html
 ```
+
+Upload a diagram, draw rectangles around problems, tag components, set severity, add comments. Copy the generated prompt.
+
+### 2. Run the architecture review (Skill)
+
+```
+/review-architecture <paste prompt from playground>
+```
+
+The `/review-architecture` skill:
+- Spawns the `architect-reviewer` sub-agent to evaluate your design
+- Assesses against Well-Architected Framework pillars
+- Recommends technology stack for every component (production + local dev with Docker)
+- Addresses each annotated issue with diagnosis and resolution
+- Generates a Mermaid architecture diagram as `{system-name}-architecture.html` and opens it in the browser
+- Produces a phased improvement roadmap
+
+### 3. Review the outputs
+
+Each run generates:
+- **`{system-name}-architecture.html`** — interactive Mermaid diagram (auto-opens in browser)
+- **`{system-name}-review.md`** — full review summary, scorecard, recommendations, and roadmap
+
+### Example
+
+```bash
+# 1. Open the playground
+open architecture-review-playground.html
+
+# 2. Upload diagram, annotate issues, copy the prompt
+
+# 3. In Claude Code, run:
+/review-architecture <paste prompt>
+
+# 4. Review outputs:
+#    architecture/my-system-architecture.html  (diagram)
+#    architecture/my-system-review.md          (review)
+```
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `architecture-review-playground.html` | Browser-based diagram annotation tool |
+| `*-architecture.html` | Generated Mermaid diagrams from `/review-architecture` |
+| `*-review.md` | Generated review summaries from `/review-architecture` |
+
+---
+
+## Playground Features
 
 No build step, no dependencies — just open the HTML file in any modern browser.
 
@@ -66,12 +118,38 @@ All credentials are stored in `localStorage` only and never leave your browser e
 | `Delete` / `Backspace` | Remove selected annotation |
 | `Esc` | Deselect / close modal |
 
-## Workflow
+## Playground Workflow
 
 1. **Upload** your architecture diagram (paste, drag, or browse)
 2. **Analyze** — click "Analyze Diagram" to get AI-detected components and relationships
 3. **Annotate** — draw rectangles around issues, set severity, link to components, add comments
-4. **Copy** — grab the generated prompt from the bottom and paste it into Claude for a full architecture redesign
+4. **Copy** — grab the generated prompt and run `/review-architecture` in Claude Code
+
+## `/review-architecture` Skill
+
+The skill lives at `.claude/skills/review-architecture/SKILL.md` and uses the `architect-reviewer` sub-agent at `.claude/agents/architect-reviewer.md`.
+
+### What it does
+
+1. Takes the generated prompt from the playground (or any pasted architecture description)
+2. Spawns the architect-reviewer agent to perform a full review
+3. Presents: summary, Well-Architected scorecard, component tech map, issue resolutions, .devcontainer setup, roadmap
+4. Generates `{system-name}-architecture.html` with a Mermaid diagram and opens it in the browser
+
+### Invoking it
+
+```
+# With prompt inline
+/review-architecture I have a solution architecture for "My System"...
+
+# Empty (will ask you to paste)
+/review-architecture
+```
+
+### Output files
+
+- `architecture/{system-name}-architecture.html` — Mermaid diagram (dark theme, auto-opens)
+- `architecture/{system-name}-review.md` — full review document (create manually or ask Claude)
 
 ## Tech
 
