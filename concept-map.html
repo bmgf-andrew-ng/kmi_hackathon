@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Code Plugin System — Concept Map</title>
+<style>
+  /* ── Reset & base ───────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #0f0f1a;
+    color: #e0e0ee;
+  }
+
+  /* ── Layout ─────────────────────────────────────────────── */
+  .app { display: flex; height: 100vh; }
+
+  /* ── Sidebar ────────────────────────────────────────────── */
+  .sidebar {
+    width: 360px; min-width: 360px;
+    background: #161625;
+    border-right: 1px solid #2a2a40;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 20px 20px 12px;
+    border-bottom: 1px solid #2a2a40;
+  }
+  .sidebar-header h1 {
+    font-size: 16px; font-weight: 700;
+    background: linear-gradient(135deg, #7c6aef, #c084fc);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+  }
+  .sidebar-header p { font-size: 12px; color: #888; }
+
+  /* legend */
+  .legend { padding: 12px 20px; border-bottom: 1px solid #2a2a40; }
+  .legend h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: #666; margin-bottom: 8px; }
+  .legend-items { display: flex; flex-wrap: wrap; gap: 6px; }
+  .legend-chip {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: #aaa;
+    padding: 3px 8px; border-radius: 4px;
+    background: #1e1e30; cursor: pointer;
+    border: 1px solid transparent;
+    transition: all .15s;
+  }
+  .legend-chip:hover { border-color: #444; }
+  .legend-chip.active { border-color: #7c6aef; background: #252540; color: #ddd; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* detail panel */
+  .detail-panel {
+    flex: 1; overflow-y: auto; padding: 16px 20px;
+  }
+  .detail-panel::-webkit-scrollbar { width: 5px; }
+  .detail-panel::-webkit-scrollbar-track { background: transparent; }
+  .detail-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+  .detail-empty {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%; color: #555; text-align: center;
+  }
+  .detail-empty svg { opacity: .3; margin-bottom: 12px; }
+  .detail-empty p { font-size: 13px; }
+
+  .detail-card { animation: fadeIn .2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .detail-card .dc-header {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 14px;
+  }
+  .dc-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .dc-title { font-size: 16px; font-weight: 700; }
+  .dc-category { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: .6px; }
+
+  .dc-section { margin-bottom: 14px; }
+  .dc-section h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: #666; margin-bottom: 6px; }
+  .dc-section p, .dc-section li { font-size: 13px; line-height: 1.55; color: #bbb; }
+  .dc-section ul { padding-left: 16px; }
+  .dc-section li { margin-bottom: 3px; }
+
+  .dc-relations { display: flex; flex-direction: column; gap: 4px; }
+  .dc-rel {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; border-radius: 6px;
+    background: #1e1e30; font-size: 12px;
+    cursor: pointer; transition: background .15s;
+  }
+  .dc-rel:hover { background: #282845; }
+  .dc-rel-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dc-rel-label { color: #888; font-style: italic; }
+  .dc-rel-target { color: #ccc; font-weight: 600; }
+
+  .dc-files { margin-top: 2px; }
+  .dc-file {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 11.5px; color: #7c6aef;
+    background: #1a1a2e; padding: 3px 8px;
+    border-radius: 4px; display: inline-block;
+    margin: 2px 4px 2px 0;
+  }
+
+  /* ── Canvas ─────────────────────────────────────────────── */
+  .canvas-wrap {
+    flex: 1; position: relative; overflow: hidden;
+    background:
+      radial-gradient(circle at 20% 30%, rgba(124,106,239,.06) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(192,132,252,.05) 0%, transparent 50%),
+      #0f0f1a;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* tooltip */
+  .tooltip {
+    position: absolute; pointer-events: none;
+    background: #222240; border: 1px solid #3a3a55;
+    border-radius: 8px; padding: 8px 12px;
+    font-size: 12px; max-width: 220px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.5);
+    opacity: 0; transition: opacity .12s;
+    z-index: 10;
+  }
+  .tooltip.visible { opacity: 1; }
+  .tooltip .tt-name { font-weight: 700; margin-bottom: 2px; }
+  .tooltip .tt-cat { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: .5px; }
+
+  /* minimap */
+  .minimap {
+    position: absolute; bottom: 56px; right: 16px;
+    width: 160px; height: 110px;
+    background: rgba(22,22,37,.85);
+    border: 1px solid #2a2a40; border-radius: 8px;
+    overflow: hidden; cursor: pointer;
+    z-index: 5;
+  }
+  .minimap canvas { width: 100%; height: 100%; }
+  .minimap-viewport {
+    position: absolute; border: 1.5px solid rgba(124,106,239,.6);
+    background: rgba(124,106,239,.08); border-radius: 2px;
+    pointer-events: none;
+  }
+
+  /* controls */
+  .controls {
+    position: absolute; top: 16px; right: 16px;
+    display: flex; gap: 6px; z-index: 5;
+  }
+  .ctrl-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: rgba(22,22,37,.85); border: 1px solid #2a2a40;
+    color: #aaa; font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .15s;
+  }
+  .ctrl-btn:hover { background: #252540; color: #ddd; border-color: #444; }
+
+  /* search */
+  .search-bar {
+    position: absolute; top: 16px; left: 16px; z-index: 5;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(22,22,37,.9); border: 1px solid #2a2a40;
+    border-radius: 8px; padding: 6px 12px; width: 260px;
+    transition: border-color .15s;
+  }
+  .search-bar:focus-within { border-color: #7c6aef; }
+  .search-bar svg { flex-shrink: 0; color: #555; }
+  .search-bar input {
+    flex: 1; background: none; border: none; outline: none;
+    color: #ddd; font-size: 13px; font-family: inherit;
+  }
+  .search-bar input::placeholder { color: #555; }
+
+  /* help overlay */
+  .help-overlay {
+    position: absolute; inset: 0;
+    background: rgba(15,15,26,.92);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50; opacity: 0; pointer-events: none;
+    transition: opacity .2s;
+  }
+  .help-overlay.visible { opacity: 1; pointer-events: auto; }
+  .help-box {
+    background: #1e1e30; border: 1px solid #2a2a40;
+    border-radius: 14px; padding: 28px 32px;
+    max-width: 420px; width: 90%;
+  }
+  .help-box h2 { font-size: 16px; margin-bottom: 14px; color: #c084fc; }
+  .help-box dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; }
+  .help-box dt {
+    font-family: 'SF Mono', monospace; font-size: 12px;
+    background: #252540; padding: 2px 8px; border-radius: 4px;
+    text-align: right; color: #aaa;
+  }
+  .help-box dd { font-size: 13px; color: #bbb; }
+  .help-box .close-help {
+    margin-top: 18px; text-align: center;
+  }
+  .help-box .close-help button {
+    background: #7c6aef; color: #fff; border: none;
+    padding: 7px 20px; border-radius: 6px; font-size: 13px;
+    cursor: pointer; transition: background .15s;
+  }
+  .help-box .close-help button:hover { background: #6a58df; }
+
+  /* ── Knowledge level badges ─────────────────────────────── */
+  .kl-buttons { display: flex; gap: 4px; margin-top: 6px; }
+  .kl-btn {
+    flex: 1; padding: 6px 0; border-radius: 6px;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: all .15s; text-align: center;
+  }
+  .kl-btn:hover { filter: brightness(1.2); }
+  .kl-btn.kl-know  { background: #16532e; color: #4ade80; border-color: #22543d; }
+  .kl-btn.kl-fuzzy { background: #553a10; color: #facc15; border-color: #6b4d1a; }
+  .kl-btn.kl-unknown { background: #3b1c4e; color: #c084fc; border-color: #5b2d7a; }
+  .kl-btn.active { box-shadow: 0 0 0 2px rgba(255,255,255,.2); filter: brightness(1.3); }
+  .kl-btn.kl-know.active  { border-color: #4ade80; }
+  .kl-btn.kl-fuzzy.active { border-color: #facc15; }
+  .kl-btn.kl-unknown.active { border-color: #c084fc; }
+
+  /* ── Knowledge summary bar ──────────────────────────────── */
+  .knowledge-summary {
+    padding: 10px 20px;
+    border-bottom: 1px solid #2a2a40;
+    background: #161625;
+  }
+  .knowledge-summary h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
+    color: #666; margin-bottom: 8px;
+  }
+  .ks-bar-wrap {
+    height: 8px; border-radius: 4px; background: #1e1e30;
+    display: flex; overflow: hidden; margin-bottom: 6px;
+  }
+  .ks-bar-seg { height: 100%; transition: width .3s ease; }
+  .ks-bar-know  { background: #4ade80; }
+  .ks-bar-fuzzy { background: #facc15; }
+  .ks-bar-unknown { background: #c084fc; }
+  .ks-bar-unmarked { background: #333; }
+  .ks-stats {
+    display: flex; gap: 12px; font-size: 11px; color: #888;
+  }
+  .ks-stat { display: flex; align-items: center; gap: 4px; }
+  .ks-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* ── Prompt output panel ────────────────────────────────── */
+  .prompt-panel {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: #131320;
+    border-top: 1px solid #2a2a40;
+    z-index: 8;
+    transition: transform .3s ease;
+    transform: translateY(100%);
+  }
+  .prompt-panel.open { transform: translateY(0); }
+  .prompt-panel-toggle {
+    position: absolute; top: -36px; left: 50%;
+    transform: translateX(-50%);
+    background: #1e1e30; border: 1px solid #2a2a40;
+    border-bottom: none; border-radius: 8px 8px 0 0;
+    padding: 6px 16px; color: #aaa; font-size: 12px;
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: all .15s; z-index: 9;
+  }
+  .prompt-panel-toggle:hover { color: #ddd; background: #252540; }
+  .prompt-panel-toggle .badge {
+    background: #c084fc; color: #0f0f1a; font-size: 10px;
+    font-weight: 700; padding: 1px 6px; border-radius: 8px;
+  }
+  .prompt-panel-inner {
+    padding: 16px 20px;
+    max-height: 260px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .prompt-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .prompt-panel-header h3 {
+    font-size: 13px; font-weight: 600; color: #c084fc;
+  }
+  .prompt-panel-actions { display: flex; gap: 6px; }
+  .prompt-action-btn {
+    padding: 5px 12px; border-radius: 6px;
+    font-size: 12px; cursor: pointer; border: none;
+    transition: all .15s; font-family: inherit;
+  }
+  .btn-copy {
+    background: #7c6aef; color: #fff;
+  }
+  .btn-copy:hover { background: #6a58df; }
+  .btn-copy.copied { background: #16a34a; }
+  .btn-reset {
+    background: #2a2a40; color: #aaa;
+  }
+  .btn-reset:hover { background: #333; color: #ddd; }
+  .prompt-output {
+    flex: 1; overflow-y: auto;
+    background: #0f0f1a; border: 1px solid #2a2a40;
+    border-radius: 8px; padding: 12px 14px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12.5px; line-height: 1.6;
+    color: #ccc; white-space: pre-wrap;
+    max-height: 180px;
+  }
+  .prompt-output::-webkit-scrollbar { width: 5px; }
+  .prompt-output::-webkit-scrollbar-track { background: transparent; }
+  .prompt-output::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  .prompt-empty { color: #555; font-style: italic; font-family: inherit; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1>Claude Code Plugin System</h1>
+      <p>Interactive concept map — click nodes to explore</p>
+    </div>
+    <div class="legend">
+      <h3>Categories</h3>
+      <div class="legend-items" id="legendItems"></div>
+    </div>
+    <div class="knowledge-summary" id="knowledgeSummary">
+      <h3>My Knowledge</h3>
+      <div class="ks-bar-wrap" id="ksBar"></div>
+      <div class="ks-stats" id="ksStats"></div>
+    </div>
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-empty">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+        <p>Click a node on the map<br>to see details here</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Canvas area -->
+  <div class="canvas-wrap" id="canvasWrap">
+    <div class="search-bar">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="searchInput" type="text" placeholder="Search concepts..." autocomplete="off">
+    </div>
+    <div class="controls">
+      <button class="ctrl-btn" id="btnZoomIn" title="Zoom in">+</button>
+      <button class="ctrl-btn" id="btnZoomOut" title="Zoom out">&minus;</button>
+      <button class="ctrl-btn" id="btnFit" title="Fit to view">&#x2922;</button>
+      <button class="ctrl-btn" id="btnHelp" title="Help">?</button>
+    </div>
+    <canvas id="mainCanvas"></canvas>
+    <div class="tooltip" id="tooltip"><div class="tt-name"></div><div class="tt-cat"></div></div>
+    <div class="minimap" id="minimap">
+      <canvas id="minimapCanvas"></canvas>
+      <div class="minimap-viewport" id="minimapVP"></div>
+    </div>
+    <div class="prompt-panel" id="promptPanel">
+      <button class="prompt-panel-toggle" id="promptToggle" onclick="togglePromptPanel()">
+        <span>Learning Prompt</span>
+        <span class="badge" id="promptBadge">0</span>
+      </button>
+      <div class="prompt-panel-inner">
+        <div class="prompt-panel-header">
+          <h3>Generated Learning Prompt</h3>
+          <div class="prompt-panel-actions">
+            <button class="prompt-action-btn btn-reset" onclick="resetKnowledge()">Reset All</button>
+            <button class="prompt-action-btn btn-copy" id="btnCopy" onclick="copyPrompt()">Copy Prompt</button>
+          </div>
+        </div>
+        <div class="prompt-output" id="promptOutput">
+          <span class="prompt-empty">Mark concepts as Know / Fuzzy / ??? by right-clicking nodes on the map, or use the buttons in the detail panel. A tailored learning prompt will be generated here.</span>
+        </div>
+      </div>
+    </div>
+    <div class="help-overlay" id="helpOverlay">
+      <div class="help-box">
+        <h2>Keyboard &amp; Mouse</h2>
+        <dl>
+          <dt>Drag</dt><dd>Pan the canvas</dd>
+          <dt>Scroll</dt><dd>Zoom in / out</dd>
+          <dt>Click node</dt><dd>Select &amp; view details</dd>
+          <dt>Double-click</dt><dd>Center on node</dd>
+          <dt>/</dt><dd>Focus search</dd>
+          <dt>Esc</dt><dd>Deselect / close</dd>
+          <dt>F</dt><dd>Fit all nodes</dd>
+          <dt>1-7</dt><dd>Filter by category</dd>
+          <dt>Right-click</dt><dd>Cycle knowledge: ??? → Fuzzy → Know</dd>
+          <dt>P</dt><dd>Toggle prompt panel</dd>
+        </dl>
+        <div class="close-help"><button onclick="toggleHelp()">Got it</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  DATA MODEL — concepts, relationships, categories
+// ═══════════════════════════════════════════════════════════════
+
+const CATEGORIES = {
+  core:         { label: 'Core',          color: '#7c6aef', icon: '⚙' },
+  extension:    { label: 'Extension',     color: '#22d3ee', icon: '🧩' },
+  runtime:      { label: 'Runtime',       color: '#f472b6', icon: '▶' },
+  distribution: { label: 'Distribution',  color: '#facc15', icon: '📦' },
+  config:       { label: 'Configuration', color: '#4ade80', icon: '🔧' },
+  protocol:     { label: 'Protocol',      color: '#fb923c', icon: '🔌' },
+  user:         { label: 'User-facing',   color: '#a78bfa', icon: '👤' },
+};
+
+const NODES = [
+  // ── Core ──
+  {
+    id: 'plugin', label: 'Plugin', cat: 'core', x: 0, y: 0,
+    desc: 'A self-contained extension package for Claude Code. Plugins bundle skills, agents, hooks, MCP servers, LSP servers, and settings into a shareable directory with a manifest file.',
+    details: [
+      'Defined by .claude-plugin/plugin.json manifest',
+      'Contains name, description, version, author metadata',
+      'Skills are namespaced as /plugin-name:skill-name',
+      'Can be shared via marketplaces or loaded locally with --plugin-dir',
+      'Installed to user, project, or local scope',
+    ],
+    files: ['.claude-plugin/plugin.json', 'skills/', 'agents/', 'hooks/', '.mcp.json', '.lsp.json', 'settings.json'],
+  },
+  {
+    id: 'claude-code', label: 'Claude Code', cat: 'core', x: 0, y: -220,
+    desc: 'Anthropic\'s official CLI tool for Claude. The host environment that loads plugins, dispatches hooks, delegates to subagents, and orchestrates skills and MCP tools.',
+    details: [
+      'Interactive AI coding assistant in the terminal',
+      'Loads plugins at session start',
+      'Routes tasks to built-in or custom subagents',
+      'Fires lifecycle events that hooks can intercept',
+      'Supports plan mode, extended thinking, and background tasks',
+    ],
+    files: ['~/.claude/settings.json', '.claude/settings.json', 'CLAUDE.md'],
+  },
+
+  // ── Extensions ──
+  {
+    id: 'skill', label: 'Skill', cat: 'extension', x: -260, y: -60,
+    desc: 'A SKILL.md file with instructions that extends what Claude can do. Skills can be invoked as /slash-commands by users or loaded automatically by Claude when the task matches the skill description.',
+    details: [
+      'Defined by SKILL.md with YAML frontmatter + markdown body',
+      'Frontmatter: name, description, allowed-tools, model, context',
+      'Can be user-invoked (/skill-name) or model-invoked (automatic)',
+      'Supports $ARGUMENTS for dynamic input and !`cmd` for shell injection',
+      'Can run in main context or forked subagent (context: fork)',
+      'Follows the open Agent Skills standard (agentskills.io)',
+    ],
+    files: ['.claude/skills/<name>/SKILL.md', '~/.claude/skills/<name>/SKILL.md', '<plugin>/skills/<name>/SKILL.md'],
+  },
+  {
+    id: 'agent', label: 'Subagent', cat: 'extension', x: 260, y: -60,
+    desc: 'A specialized AI assistant that runs in its own isolated context with custom system prompt, tool access, and permissions. Claude delegates tasks to subagents based on their description.',
+    details: [
+      'Defined as markdown files with YAML frontmatter',
+      'Built-in: Explore (fast read-only), Plan (research), general-purpose (all tools)',
+      'Custom agents support: tool restrictions, model selection, permission modes',
+      'Can preload skills, define hooks, and enable persistent memory',
+      'Run in foreground (blocking) or background (concurrent)',
+      'Cannot spawn other subagents (no nesting)',
+    ],
+    files: ['.claude/agents/<name>.md', '~/.claude/agents/<name>.md', '<plugin>/agents/<name>.md'],
+  },
+  {
+    id: 'hook', label: 'Hook', cat: 'extension', x: 260, y: 170,
+    desc: 'User-defined shell commands or LLM prompts that execute automatically at specific lifecycle points. Hooks provide deterministic control — they always run, unlike skills which rely on Claude\'s judgment.',
+    details: [
+      'Events: SessionStart, PreToolUse, PostToolUse, Stop, Notification, SubagentStart/Stop, and more',
+      'Three types: command (shell), prompt (single LLM call), agent (multi-turn LLM)',
+      'Matchers filter when hooks fire (regex on tool name, session source, etc.)',
+      'Exit code 0 = proceed, exit code 2 = block action',
+      'Receive JSON context on stdin, return decisions via exit code or JSON stdout',
+      'Can be scoped to plugins, skills, agents, or global settings',
+    ],
+    files: ['.claude/settings.json (hooks key)', '<plugin>/hooks/hooks.json'],
+  },
+  {
+    id: 'slash-command', label: 'Slash Command', cat: 'user', x: -260, y: -220,
+    desc: 'User-invokable actions triggered by typing / in Claude Code. Skills and legacy commands both create slash commands. Plugin commands are namespaced as /plugin-name:command.',
+    details: [
+      'Legacy format: .claude/commands/name.md (still works)',
+      'Skill format: .claude/skills/name/SKILL.md (recommended)',
+      'Plugin commands: /plugin-name:skill-name (namespaced)',
+      'Built-in: /help, /compact, /clear, /hooks, /agents, /plugin',
+      'Arguments passed via $ARGUMENTS placeholder',
+      'Autocomplete available with argument-hint frontmatter',
+    ],
+    files: ['.claude/commands/<name>.md', '.claude/skills/<name>/SKILL.md'],
+  },
+
+  // ── Protocol ──
+  {
+    id: 'mcp-server', label: 'MCP Server', cat: 'protocol', x: 310, y: -220,
+    desc: 'An external process implementing the Model Context Protocol (MCP) that exposes tools, resources, and prompts to Claude Code. Like a USB-C port for AI — a standardized way to connect to external systems.',
+    details: [
+      'Standardized protocol for AI ↔ external system communication',
+      'Exposes tools Claude can call (e.g., GitHub search, Slack messages, DB queries)',
+      'Configured per-project in .mcp.json or bundled in plugins',
+      'Tools appear as mcp__<server>__<tool> in Claude\'s tool list',
+      'Supports stdio and SSE transport protocols',
+      'Can be scoped to specific subagents via mcpServers field',
+    ],
+    files: ['.mcp.json', '<plugin>/.mcp.json'],
+  },
+  {
+    id: 'mcp', label: 'Model Context\nProtocol', cat: 'protocol', x: 470, y: -120,
+    desc: 'An open standard by Anthropic for connecting AI applications to external data sources, tools, and workflows. MCP defines how clients (like Claude Code) communicate with servers that provide capabilities.',
+    details: [
+      'Open-source standard (modelcontextprotocol.io)',
+      'Client-server architecture: Claude Code is an MCP client',
+      'Servers expose: tools (actions), resources (data), prompts (templates)',
+      'Transport: stdio (local processes) or SSE (remote HTTP)',
+      'Ecosystem of community-built servers for hundreds of services',
+      'Analogous to USB-C — one protocol, many capabilities',
+    ],
+    files: [],
+  },
+  {
+    id: 'lsp-server', label: 'LSP Server', cat: 'protocol', x: 130, y: -320,
+    desc: 'Language Server Protocol integration giving Claude real-time code intelligence — jump to definitions, find references, see diagnostics. Configured via .lsp.json in plugins.',
+    details: [
+      'Provides: diagnostics, go-to-definition, find references, hover, symbols',
+      'Auto-reports errors after every Claude edit (no compilation needed)',
+      'Official plugins for 11 languages (TS, Python, Rust, Go, etc.)',
+      'Requires language server binary installed on host machine',
+      'Configured in .lsp.json mapping file extensions to language IDs',
+    ],
+    files: ['<plugin>/.lsp.json'],
+  },
+
+  // ── Distribution ──
+  {
+    id: 'marketplace', label: 'Marketplace', cat: 'distribution', x: -140, y: 220,
+    desc: 'A catalog (marketplace.json) that lists plugins and where to fetch them. Marketplaces enable centralized discovery, version tracking, and automatic updates for teams and communities.',
+    details: [
+      'Defined by .claude-plugin/marketplace.json',
+      'Official: claude-plugins-official (auto-available)',
+      'Demo: anthropics/claude-code (add manually)',
+      'Install: /plugin install name@marketplace',
+      'Plugin sources: relative paths, GitHub, Git URLs, npm, pip',
+      'Supports auto-updates, release channels, and team configuration',
+      'Managed restrictions via strictKnownMarketplaces',
+    ],
+    files: ['.claude-plugin/marketplace.json'],
+  },
+  {
+    id: 'plugin-directory', label: 'Plugin Directory\n(Official)', cat: 'distribution', x: -340, y: 320,
+    desc: 'The official Anthropic-maintained marketplace (claude-plugins-official) with curated plugins. Automatically available in Claude Code — browse via /plugin > Discover.',
+    details: [
+      '29+ official plugins maintained by Anthropic',
+      'Categories: Code intelligence (LSP), Integrations, Workflows, Styles',
+      'Includes LSP plugins for 11 languages',
+      'External integrations: GitHub, Slack, Jira, Figma, Sentry, etc.',
+      'Auto-update enabled by default',
+      'Install: /plugin install name@claude-plugins-official',
+    ],
+    files: [],
+  },
+  {
+    id: 'community-marketplace', label: 'Community\nMarketplace', cat: 'distribution', x: 50, y: 350,
+    desc: 'Third-party marketplaces created by teams or communities. Anyone can create and host a marketplace on GitHub, GitLab, or any git service to distribute their plugins.',
+    details: [
+      'Created by teams/communities to share plugins',
+      'Hosted on GitHub, GitLab, Bitbucket, or self-hosted git',
+      'Add: /plugin marketplace add owner/repo',
+      'Can be preconfigured for teams via extraKnownMarketplaces',
+      'Supports private repos with token-based authentication',
+      'Auto-update disabled by default (enable per marketplace)',
+    ],
+    files: [],
+  },
+
+  // ── Configuration ──
+  {
+    id: 'settings', label: 'Settings', cat: 'config', x: 450, y: 100,
+    desc: 'JSON configuration files at multiple scopes that control Claude Code behavior, permissions, hooks, and plugin options. Settings cascade: managed > enterprise > user > project > local.',
+    details: [
+      'User: ~/.claude/settings.json (all projects)',
+      'Project: .claude/settings.json (shared via git)',
+      'Local: .claude/settings.local.json (git-ignored)',
+      'Managed: enterprise admin-controlled policies',
+      'Controls: permissions, hooks, enabledPlugins, extraKnownMarketplaces',
+      'Plugin settings.json can set default agent for the plugin',
+    ],
+    files: ['~/.claude/settings.json', '.claude/settings.json', '.claude/settings.local.json'],
+  },
+  {
+    id: 'permissions', label: 'Permissions', cat: 'config', x: 460, y: 280,
+    desc: 'Rules controlling which tools Claude can use, which skills it can invoke, and what actions require user approval. Permissions cascade through settings scopes and can be overridden per-subagent.',
+    details: [
+      'Permission modes: default, acceptEdits, dontAsk, bypassPermissions, plan',
+      'Tool-specific rules: allow/deny lists with pattern matching',
+      'Skill restrictions: Skill(name) or Skill(name *) syntax',
+      'Subagent restrictions: Task(agent-name) in deny rules',
+      'Plugin tools inherit parent permissions unless overridden',
+      'Managed settings cannot be overridden by users',
+    ],
+    files: [],
+  },
+  {
+    id: 'memory', label: 'CLAUDE.md\n(Memory)', cat: 'config', x: -440, y: 120,
+    desc: 'Persistent context files that Claude reads at session start. CLAUDE.md files store project conventions, coding standards, and instructions that persist across conversations.',
+    details: [
+      'Project: CLAUDE.md or .claude/CLAUDE.md',
+      'User: ~/.claude/CLAUDE.md (all projects)',
+      'Loaded automatically at session start',
+      'Re-injected after context compaction via hooks',
+      'Subagents receive CLAUDE.md but NOT parent skills',
+      'Agents can have persistent memory directories',
+    ],
+    files: ['CLAUDE.md', '.claude/CLAUDE.md', '~/.claude/CLAUDE.md'],
+  },
+  {
+    id: 'manifest', label: 'Plugin Manifest', cat: 'config', x: -140, y: 100,
+    desc: 'The plugin.json file inside .claude-plugin/ that defines a plugin\'s identity — name, version, description, and author. The manifest is the only required file in a plugin.',
+    details: [
+      'Located at .claude-plugin/plugin.json',
+      'Required fields: name (unique ID & namespace)',
+      'Recommended: description, version (semver)',
+      'Optional: author, homepage, repository, license, keywords',
+      'Name becomes the skill namespace prefix',
+      'Strict mode: manifest is authority for component definitions',
+    ],
+    files: ['.claude-plugin/plugin.json'],
+  },
+
+  // ── Runtime ──
+  {
+    id: 'lifecycle', label: 'Lifecycle\nEvents', cat: 'runtime', x: -440, y: -120,
+    desc: 'The sequence of events fired during a Claude Code session that hooks can intercept. Events cover the full lifecycle from session start through tool use to session end.',
+    details: [
+      'SessionStart → UserPromptSubmit → PreToolUse → PermissionRequest → PostToolUse → Stop → SessionEnd',
+      'SubagentStart / SubagentStop for delegation tracking',
+      'Notification for permission prompts and idle alerts',
+      'ConfigChange when settings or skills are modified',
+      'PreCompact before context compaction',
+      'TaskCompleted when a todo item is marked done',
+    ],
+    files: [],
+  },
+  {
+    id: 'tool', label: 'Tool', cat: 'runtime', x: -440, y: -300,
+    desc: 'An action Claude can take — reading files, editing code, running bash commands, searching, etc. Tools are the atomic operations in Claude\'s workflow. MCP servers add external tools.',
+    details: [
+      'Built-in: Read, Edit, Write, Bash, Grep, Glob, Task, Skill, etc.',
+      'MCP tools: mcp__<server>__<tool> naming convention',
+      'Tools can be allowed/denied per subagent or globally',
+      'PreToolUse hooks can intercept and block tool calls',
+      'PostToolUse hooks can run actions after tool completion',
+      'allowed-tools in skill frontmatter grants auto-approval',
+    ],
+    files: [],
+  },
+];
+
+const EDGES = [
+  // Plugin contains components
+  { from: 'plugin', to: 'skill', label: 'contains', style: 'solid' },
+  { from: 'plugin', to: 'agent', label: 'contains', style: 'solid' },
+  { from: 'plugin', to: 'hook', label: 'contains', style: 'solid' },
+  { from: 'plugin', to: 'mcp-server', label: 'bundles', style: 'solid' },
+  { from: 'plugin', to: 'lsp-server', label: 'bundles', style: 'solid' },
+  { from: 'plugin', to: 'manifest', label: 'defined by', style: 'solid' },
+  { from: 'plugin', to: 'settings', label: 'ships default', style: 'dashed' },
+
+  // Claude Code orchestrates everything
+  { from: 'claude-code', to: 'plugin', label: 'loads', style: 'solid' },
+  { from: 'claude-code', to: 'agent', label: 'delegates to', style: 'solid' },
+  { from: 'claude-code', to: 'skill', label: 'invokes', style: 'solid' },
+  { from: 'claude-code', to: 'hook', label: 'fires', style: 'solid' },
+  { from: 'claude-code', to: 'tool', label: 'uses', style: 'solid' },
+  { from: 'claude-code', to: 'mcp-server', label: 'connects to', style: 'solid' },
+  { from: 'claude-code', to: 'memory', label: 'reads', style: 'dashed' },
+  { from: 'claude-code', to: 'settings', label: 'configured by', style: 'dashed' },
+
+  // Skills ↔ other concepts
+  { from: 'skill', to: 'slash-command', label: 'creates', style: 'solid' },
+  { from: 'skill', to: 'agent', label: 'can fork into', style: 'dashed' },
+  { from: 'skill', to: 'tool', label: 'restricts via\nallowed-tools', style: 'dashed' },
+
+  // Agents ↔ other concepts
+  { from: 'agent', to: 'skill', label: 'preloads', style: 'dashed' },
+  { from: 'agent', to: 'hook', label: 'defines scoped', style: 'dashed' },
+  { from: 'agent', to: 'mcp-server', label: 'accesses', style: 'dashed' },
+  { from: 'agent', to: 'permissions', label: 'scoped by', style: 'dashed' },
+  { from: 'agent', to: 'tool', label: 'restricted to', style: 'dashed' },
+
+  // Hooks ↔ lifecycle
+  { from: 'hook', to: 'lifecycle', label: 'triggered by', style: 'solid' },
+  { from: 'lifecycle', to: 'tool', label: 'emits events for', style: 'dashed' },
+
+  // MCP
+  { from: 'mcp-server', to: 'mcp', label: 'implements', style: 'solid' },
+  { from: 'mcp-server', to: 'tool', label: 'exposes as', style: 'solid' },
+
+  // Distribution
+  { from: 'marketplace', to: 'plugin', label: 'distributes', style: 'solid' },
+  { from: 'plugin-directory', to: 'marketplace', label: 'is a', style: 'solid' },
+  { from: 'community-marketplace', to: 'marketplace', label: 'is a', style: 'solid' },
+  { from: 'marketplace', to: 'settings', label: 'configured via\nextraKnownMarketplaces', style: 'dashed' },
+
+  // Settings & permissions
+  { from: 'settings', to: 'permissions', label: 'defines', style: 'solid' },
+  { from: 'settings', to: 'hook', label: 'configures', style: 'dashed' },
+  { from: 'permissions', to: 'tool', label: 'controls access to', style: 'dashed' },
+];
+
+
+// ═══════════════════════════════════════════════════════════════
+//  RENDERING ENGINE
+// ═══════════════════════════════════════════════════════════════
+
+const mainCanvas = document.getElementById('mainCanvas');
+const ctx = mainCanvas.getContext('2d');
+const mmCanvas = document.getElementById('minimapCanvas');
+const mmCtx = mmCanvas.getContext('2d');
+const wrap = document.getElementById('canvasWrap');
+
+let W, H, dpr;
+let cam = { x: 0, y: 0, zoom: 1 };
+let selectedId = null;
+let hoveredId = null;
+let filterCat = null;
+let searchTerm = '';
+let dragging = false;
+let dragStart = { x: 0, y: 0 };
+let camStart = { x: 0, y: 0 };
+let dragNode = null;
+let animFrame;
+
+// Knowledge tracking: nodeId → 'know' | 'fuzzy' | 'unknown' | null
+const knowledgeMap = {};
+const KL_CYCLE = [null, 'unknown', 'fuzzy', 'know'];
+const KL_META = {
+  know:    { label: 'Know',  color: '#4ade80', bg: '#16532e', symbol: '\u2713' },
+  fuzzy:   { label: 'Fuzzy', color: '#facc15', bg: '#553a10', symbol: '~' },
+  unknown: { label: '???',   color: '#c084fc', bg: '#3b1c4e', symbol: '?' },
+};
+
+// Physics
+const NODE_RADIUS = 48;
+const FONT_SIZE = 12;
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  mainCanvas.width = W * dpr; mainCanvas.height = H * dpr;
+  mainCanvas.style.width = W + 'px'; mainCanvas.style.height = H + 'px';
+  mmCanvas.width = 160 * dpr; mmCanvas.height = 110 * dpr;
+  requestDraw();
+}
+window.addEventListener('resize', resize);
+
+function screenToWorld(sx, sy) {
+  return {
+    x: (sx - W / 2) / cam.zoom + cam.x,
+    y: (sy - H / 2) / cam.zoom + cam.y,
+  };
+}
+function worldToScreen(wx, wy) {
+  return {
+    x: (wx - cam.x) * cam.zoom + W / 2,
+    y: (wy - cam.y) * cam.zoom + H / 2,
+  };
+}
+
+function nodeAt(sx, sy) {
+  const w = screenToWorld(sx, sy);
+  for (let i = NODES.length - 1; i >= 0; i--) {
+    const n = NODES[i];
+    if (isFiltered(n)) continue;
+    const dx = w.x - n.x, dy = w.y - n.y;
+    if (dx * dx + dy * dy < NODE_RADIUS * NODE_RADIUS) return n;
+  }
+  return null;
+}
+
+function isFiltered(n) {
+  if (filterCat && n.cat !== filterCat) return true;
+  if (searchTerm) {
+    const s = searchTerm.toLowerCase();
+    return !(n.label.toLowerCase().includes(s) || n.desc.toLowerCase().includes(s) || n.cat.toLowerCase().includes(s));
+  }
+  return false;
+}
+
+function isEdgeVisible(e) {
+  const from = NODES.find(n => n.id === e.from);
+  const to = NODES.find(n => n.id === e.to);
+  return from && to && !isFiltered(from) && !isFiltered(to);
+}
+
+// ── Drawing ──────────────────────────────────────────────────
+
+function drawEdge(c, e, scale) {
+  const from = NODES.find(n => n.id === e.from);
+  const to = NODES.find(n => n.id === e.to);
+  if (!from || !to) return;
+
+  const isHighlighted = selectedId && (e.from === selectedId || e.to === selectedId);
+  const dimmed = selectedId && !isHighlighted;
+
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  const ux = dx / dist, uy = dy / dist;
+
+  const r = NODE_RADIUS * scale;
+  const x1 = from.x + ux * r, y1 = from.y + uy * r;
+  const x2 = to.x - ux * r, y2 = to.y - uy * r;
+
+  c.save();
+  c.globalAlpha = dimmed ? 0.08 : isHighlighted ? 0.7 : 0.2;
+  c.strokeStyle = isHighlighted ? '#c084fc' : '#556';
+  c.lineWidth = (isHighlighted ? 2 : 1) * scale;
+
+  if (e.style === 'dashed') c.setLineDash([6 * scale, 4 * scale]);
+
+  c.beginPath();
+  c.moveTo(x1, y1);
+  c.lineTo(x2, y2);
+  c.stroke();
+  c.setLineDash([]);
+
+  // arrowhead
+  const aLen = 8 * scale;
+  const ax = x2 - ux * aLen, ay = y2 - uy * aLen;
+  c.beginPath();
+  c.moveTo(x2, y2);
+  c.lineTo(ax + uy * aLen * 0.4, ay - ux * aLen * 0.4);
+  c.lineTo(ax - uy * aLen * 0.4, ay + ux * aLen * 0.4);
+  c.closePath();
+  c.fillStyle = isHighlighted ? '#c084fc' : '#556';
+  c.fill();
+
+  // label
+  if (scale > 0.5 && e.label) {
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    c.font = `${9 * scale}px Inter, system-ui, sans-serif`;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = isHighlighted ? '#a78bfa' : '#556';
+    c.globalAlpha = dimmed ? 0.06 : isHighlighted ? 0.8 : 0.35;
+    const lines = e.label.split('\n');
+    lines.forEach((line, i) => {
+      c.fillText(line, mx, my + (i - (lines.length - 1) / 2) * 11 * scale);
+    });
+  }
+  c.restore();
+}
+
+function drawNode(c, n, scale) {
+  const cat = CATEGORIES[n.cat];
+  const isSel = n.id === selectedId;
+  const isHov = n.id === hoveredId;
+  const dimmed = (selectedId || filterCat || searchTerm) && !isSel && isFiltered(n);
+  if (dimmed) return;
+
+  const connectedToSelected = selectedId && EDGES.some(e =>
+    (e.from === selectedId && e.to === n.id) || (e.to === selectedId && e.from === n.id)
+  );
+  const fadedBySelection = selectedId && !isSel && !connectedToSelected;
+
+  const r = NODE_RADIUS * scale;
+
+  c.save();
+  c.globalAlpha = fadedBySelection ? 0.2 : 1;
+
+  // glow
+  if (isSel || isHov) {
+    const grad = c.createRadialGradient(n.x, n.y, r * 0.5, n.x, n.y, r * 2.2);
+    grad.addColorStop(0, cat.color + '30');
+    grad.addColorStop(1, 'transparent');
+    c.fillStyle = grad;
+    c.fillRect(n.x - r * 2.5, n.y - r * 2.5, r * 5, r * 5);
+  }
+
+  // circle
+  c.beginPath();
+  c.arc(n.x, n.y, r, 0, Math.PI * 2);
+  const bgGrad = c.createRadialGradient(n.x - r * 0.3, n.y - r * 0.3, 0, n.x, n.y, r);
+  bgGrad.addColorStop(0, '#282845');
+  bgGrad.addColorStop(1, '#1a1a2e');
+  c.fillStyle = bgGrad;
+  c.fill();
+  c.strokeStyle = isSel ? cat.color : isHov ? cat.color + 'aa' : cat.color + '44';
+  c.lineWidth = (isSel ? 2.5 : isHov ? 2 : 1.2) * scale;
+  c.stroke();
+
+  // icon
+  c.font = `${18 * scale}px serif`;
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(cat.icon, n.x, n.y - 8 * scale);
+
+  // label
+  c.font = `600 ${FONT_SIZE * scale}px Inter, system-ui, sans-serif`;
+  c.fillStyle = isSel ? '#fff' : '#ccc';
+  c.textAlign = 'center'; c.textBaseline = 'top';
+  const lines = n.label.split('\n');
+  lines.forEach((line, i) => {
+    c.fillText(line, n.x, n.y + 8 * scale + i * (FONT_SIZE + 2) * scale);
+  });
+
+  // category chip
+  if (scale > 0.6) {
+    c.font = `${8 * scale}px Inter, system-ui, sans-serif`;
+    c.fillStyle = cat.color + '88';
+    c.textBaseline = 'bottom';
+    c.fillText(cat.label.toUpperCase(), n.x, n.y - r - 4 * scale);
+  }
+
+  // knowledge badge
+  const kl = knowledgeMap[n.id];
+  if (kl && KL_META[kl]) {
+    const km = KL_META[kl];
+    const bx = n.x + r * 0.7, by = n.y - r * 0.7;
+    const br2 = 10 * scale;
+    c.globalAlpha = fadedBySelection ? 0.3 : 1;
+    // shadow
+    c.beginPath(); c.arc(bx, by, br2 + 1.5 * scale, 0, Math.PI * 2);
+    c.fillStyle = '#0f0f1a'; c.fill();
+    // badge circle
+    c.beginPath(); c.arc(bx, by, br2, 0, Math.PI * 2);
+    c.fillStyle = km.bg; c.fill();
+    c.strokeStyle = km.color; c.lineWidth = 1.5 * scale; c.stroke();
+    // badge symbol
+    c.font = `700 ${11 * scale}px Inter, system-ui, sans-serif`;
+    c.fillStyle = km.color;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(km.symbol, bx, by);
+  }
+
+  c.restore();
+}
+
+function draw() {
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  ctx.scale(cam.zoom, cam.zoom);
+  ctx.translate(-cam.x, -cam.y);
+
+  // edges
+  EDGES.forEach(e => { if (isEdgeVisible(e)) drawEdge(ctx, e, 1); });
+  // nodes
+  NODES.forEach(n => { if (!isFiltered(n)) drawNode(ctx, n, 1); });
+
+  ctx.restore();
+  ctx.restore();
+
+  drawMinimap();
+}
+
+function requestDraw() {
+  if (!animFrame) animFrame = requestAnimationFrame(() => { animFrame = null; draw(); });
+}
+
+// ── Minimap ──────────────────────────────────────────────────
+
+function drawMinimap() {
+  const mw = 160, mh = 110;
+  mmCtx.save();
+  mmCtx.scale(dpr, dpr);
+  mmCtx.clearRect(0, 0, mw, mh);
+
+  // compute bounds
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  NODES.forEach(n => {
+    if (isFiltered(n)) return;
+    minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x);
+    minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y);
+  });
+  const pad = 80;
+  minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+  const rangeX = maxX - minX || 1, rangeY = maxY - minY || 1;
+  const s = Math.min(mw / rangeX, mh / rangeY);
+
+  const ox = (mw - rangeX * s) / 2, oy = (mh - rangeY * s) / 2;
+
+  // edges
+  mmCtx.globalAlpha = 0.15;
+  mmCtx.strokeStyle = '#556';
+  mmCtx.lineWidth = 0.5;
+  EDGES.forEach(e => {
+    if (!isEdgeVisible(e)) return;
+    const from = NODES.find(n => n.id === e.from);
+    const to = NODES.find(n => n.id === e.to);
+    mmCtx.beginPath();
+    mmCtx.moveTo(ox + (from.x - minX) * s, oy + (from.y - minY) * s);
+    mmCtx.lineTo(ox + (to.x - minX) * s, oy + (to.y - minY) * s);
+    mmCtx.stroke();
+  });
+
+  // nodes
+  NODES.forEach(n => {
+    if (isFiltered(n)) return;
+    const cat = CATEGORIES[n.cat];
+    mmCtx.globalAlpha = n.id === selectedId ? 1 : 0.6;
+    mmCtx.fillStyle = cat.color;
+    mmCtx.beginPath();
+    mmCtx.arc(ox + (n.x - minX) * s, oy + (n.y - minY) * s, 3, 0, Math.PI * 2);
+    mmCtx.fill();
+  });
+
+  // viewport rect
+  const vp = document.getElementById('minimapVP');
+  const tl = screenToWorld(0, 0);
+  const br = screenToWorld(W, H);
+  const vpL = ox + (tl.x - minX) * s;
+  const vpT = oy + (tl.y - minY) * s;
+  const vpW = (br.x - tl.x) * s;
+  const vpH = (br.y - tl.y) * s;
+  vp.style.left = Math.max(0, vpL) + 'px';
+  vp.style.top = Math.max(0, vpT) + 'px';
+  vp.style.width = Math.min(mw - Math.max(0, vpL), vpW) + 'px';
+  vp.style.height = Math.min(mh - Math.max(0, vpT), vpH) + 'px';
+
+  mmCtx.restore();
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  INTERACTION
+// ═══════════════════════════════════════════════════════════════
+
+// ── Mouse ────────────────────────────────────────────────────
+
+mainCanvas.addEventListener('mousedown', e => {
+  const rect = mainCanvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  const node = nodeAt(sx, sy);
+
+  if (node) {
+    dragNode = node;
+    dragStart = { x: e.clientX, y: e.clientY };
+  } else {
+    dragging = true;
+    dragStart = { x: e.clientX, y: e.clientY };
+    camStart = { x: cam.x, y: cam.y };
+    mainCanvas.style.cursor = 'grabbing';
+  }
+});
+
+mainCanvas.addEventListener('mousemove', e => {
+  const rect = mainCanvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+
+  if (dragNode) {
+    const w = screenToWorld(sx, sy);
+    dragNode.x = w.x;
+    dragNode.y = w.y;
+    requestDraw();
+    return;
+  }
+
+  if (dragging) {
+    const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+    cam.x = camStart.x - dx / cam.zoom;
+    cam.y = camStart.y - dy / cam.zoom;
+    requestDraw();
+    return;
+  }
+
+  const node = nodeAt(sx, sy);
+  if (node) {
+    hoveredId = node.id;
+    mainCanvas.style.cursor = 'pointer';
+    const tt = document.getElementById('tooltip');
+    tt.querySelector('.tt-name').textContent = node.label.replace('\n', ' ');
+    tt.querySelector('.tt-cat').textContent = CATEGORIES[node.cat].label;
+    tt.classList.add('visible');
+    tt.style.left = (sx + 16) + 'px';
+    tt.style.top = (sy - 10) + 'px';
+  } else {
+    hoveredId = null;
+    mainCanvas.style.cursor = 'default';
+    document.getElementById('tooltip').classList.remove('visible');
+  }
+  requestDraw();
+});
+
+mainCanvas.addEventListener('mouseup', e => {
+  if (dragNode) {
+    const rect = mainCanvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    const movedDist = Math.abs(e.clientX - dragStart.x) + Math.abs(e.clientY - dragStart.y);
+    if (movedDist < 5) {
+      selectNode(dragNode.id);
+    }
+    dragNode = null;
+    return;
+  }
+  if (dragging) {
+    dragging = false;
+    mainCanvas.style.cursor = 'default';
+    // check if it was a click (no movement)
+    const movedDist = Math.abs(e.clientX - dragStart.x) + Math.abs(e.clientY - dragStart.y);
+    if (movedDist < 5) {
+      selectNode(null);
+    }
+  }
+});
+
+mainCanvas.addEventListener('dblclick', e => {
+  const rect = mainCanvas.getBoundingClientRect();
+  const node = nodeAt(e.clientX - rect.left, e.clientY - rect.top);
+  if (node) {
+    cam.x = node.x; cam.y = node.y;
+    requestDraw();
+  }
+});
+
+mainCanvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  cam.zoom = Math.max(0.2, Math.min(3, cam.zoom * factor));
+  requestDraw();
+}, { passive: false });
+
+// ── Keyboard ─────────────────────────────────────────────────
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') {
+    if (e.key === 'Escape') { e.target.blur(); searchTerm = ''; e.target.value = ''; requestDraw(); updateDetail(); }
+    return;
+  }
+  if (e.key === '/') { e.preventDefault(); document.getElementById('searchInput').focus(); }
+  if (e.key === 'Escape') {
+    if (document.getElementById('helpOverlay').classList.contains('visible')) { toggleHelp(); return; }
+    selectNode(null); filterCat = null; buildLegend(); requestDraw();
+  }
+  if (e.key === 'f' || e.key === 'F') fitAll();
+  if (e.key === 'p' || e.key === 'P') togglePromptPanel();
+  if (e.key >= '1' && e.key <= '7') {
+    const cats = Object.keys(CATEGORIES);
+    const idx = parseInt(e.key) - 1;
+    if (idx < cats.length) {
+      filterCat = filterCat === cats[idx] ? null : cats[idx];
+      buildLegend(); requestDraw();
+    }
+  }
+});
+
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchTerm = e.target.value;
+  requestDraw();
+  updateDetail();
+});
+
+// ── Controls ─────────────────────────────────────────────────
+
+document.getElementById('btnZoomIn').addEventListener('click', () => { cam.zoom = Math.min(3, cam.zoom * 1.3); requestDraw(); });
+document.getElementById('btnZoomOut').addEventListener('click', () => { cam.zoom = Math.max(0.2, cam.zoom / 1.3); requestDraw(); });
+document.getElementById('btnFit').addEventListener('click', fitAll);
+document.getElementById('btnHelp').addEventListener('click', toggleHelp);
+
+function fitAll() {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  let count = 0;
+  NODES.forEach(n => {
+    if (isFiltered(n)) return;
+    minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x);
+    minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y);
+    count++;
+  });
+  if (!count) return;
+  const pad = 120;
+  cam.x = (minX + maxX) / 2;
+  cam.y = (minY + maxY) / 2;
+  cam.zoom = Math.min(1.5, Math.min(W / (maxX - minX + pad * 2), H / (maxY - minY + pad * 2)));
+  requestDraw();
+}
+
+function toggleHelp() {
+  document.getElementById('helpOverlay').classList.toggle('visible');
+}
+
+// ── Selection & Detail ───────────────────────────────────────
+
+function selectNode(id) {
+  selectedId = id;
+  requestDraw();
+  updateDetail();
+}
+
+function updateDetail() {
+  const panel = document.getElementById('detailPanel');
+  if (!selectedId) {
+    panel.innerHTML = `<div class="detail-empty">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+      <p>Click a node on the map<br>to see details here</p>
+    </div>`;
+    return;
+  }
+  const n = NODES.find(n => n.id === selectedId);
+  if (!n) return;
+  const cat = CATEGORIES[n.cat];
+
+  // find relations
+  const rels = EDGES.filter(e => e.from === n.id || e.to === n.id).map(e => {
+    const isSource = e.from === n.id;
+    const otherId = isSource ? e.to : e.from;
+    const other = NODES.find(n => n.id === otherId);
+    return { label: e.label, target: other, isSource };
+  });
+
+  const kl = knowledgeMap[n.id] || null;
+  let html = `<div class="detail-card">
+    <div class="dc-header">
+      <div class="dc-icon" style="background:${cat.color}22;color:${cat.color}">${cat.icon}</div>
+      <div>
+        <div class="dc-title">${n.label.replace('\n', ' ')}</div>
+        <div class="dc-category">${cat.label}</div>
+      </div>
+    </div>
+    <div class="dc-section">
+      <h4>My Knowledge Level</h4>
+      <div class="kl-buttons">
+        <div class="kl-btn kl-know ${kl === 'know' ? 'active' : ''}" onclick="setKnowledge('${n.id}', ${kl === 'know' ? 'null' : "'know'"})">Know</div>
+        <div class="kl-btn kl-fuzzy ${kl === 'fuzzy' ? 'active' : ''}" onclick="setKnowledge('${n.id}', ${kl === 'fuzzy' ? 'null' : "'fuzzy'"})">Fuzzy</div>
+        <div class="kl-btn kl-unknown ${kl === 'unknown' ? 'active' : ''}" onclick="setKnowledge('${n.id}', ${kl === 'unknown' ? 'null' : "'unknown'"})">???</div>
+      </div>
+    </div>
+    <div class="dc-section">
+      <h4>Overview</h4>
+      <p>${n.desc}</p>
+    </div>`;
+
+  if (n.details && n.details.length) {
+    html += `<div class="dc-section"><h4>Key Details</h4><ul>${n.details.map(d => `<li>${d}</li>`).join('')}</ul></div>`;
+  }
+
+  if (n.files && n.files.length) {
+    html += `<div class="dc-section"><h4>Key Files</h4><div class="dc-files">${n.files.map(f => `<span class="dc-file">${f}</span>`).join('')}</div></div>`;
+  }
+
+  if (rels.length) {
+    html += `<div class="dc-section"><h4>Relationships (${rels.length})</h4><div class="dc-relations">`;
+    rels.forEach(r => {
+      const otherCat = CATEGORIES[r.target.cat];
+      const arrow = r.isSource ? '→' : '←';
+      html += `<div class="dc-rel" onclick="selectNode('${r.target.id}')">
+        <span class="dc-rel-dot" style="background:${otherCat.color}"></span>
+        <span class="dc-rel-label">${arrow} ${r.label}</span>
+        <span class="dc-rel-target">${r.target.label.replace('\n', ' ')}</span>
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  html += `</div>`;
+  panel.innerHTML = html;
+}
+
+// ── Right-click to cycle knowledge ────────────────────────────
+
+mainCanvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const rect = mainCanvas.getBoundingClientRect();
+  const node = nodeAt(e.clientX - rect.left, e.clientY - rect.top);
+  if (!node) return;
+  cycleKnowledge(node.id);
+});
+
+function cycleKnowledge(id) {
+  const cur = knowledgeMap[id] || null;
+  const idx = KL_CYCLE.indexOf(cur);
+  knowledgeMap[id] = KL_CYCLE[(idx + 1) % KL_CYCLE.length];
+  if (knowledgeMap[id] === null) delete knowledgeMap[id];
+  requestDraw();
+  updateKnowledgeSummary();
+  updatePromptOutput();
+  if (selectedId === id) updateDetail();
+}
+
+function setKnowledge(id, level) {
+  if (level === null) delete knowledgeMap[id];
+  else knowledgeMap[id] = level;
+  requestDraw();
+  updateKnowledgeSummary();
+  updatePromptOutput();
+  if (selectedId === id) updateDetail();
+}
+
+// ── Knowledge summary ────────────────────────────────────────
+
+function updateKnowledgeSummary() {
+  const total = NODES.length;
+  const counts = { know: 0, fuzzy: 0, unknown: 0, unmarked: 0 };
+  NODES.forEach(n => {
+    const kl = knowledgeMap[n.id];
+    if (kl) counts[kl]++;
+    else counts.unmarked++;
+  });
+
+  const bar = document.getElementById('ksBar');
+  bar.innerHTML = [
+    { key: 'know', cls: 'ks-bar-know' },
+    { key: 'fuzzy', cls: 'ks-bar-fuzzy' },
+    { key: 'unknown', cls: 'ks-bar-unknown' },
+    { key: 'unmarked', cls: 'ks-bar-unmarked' },
+  ].map(s => `<div class="ks-bar-seg ${s.cls}" style="width:${(counts[s.key] / total * 100)}%"></div>`).join('');
+
+  const stats = document.getElementById('ksStats');
+  stats.innerHTML = `
+    <span class="ks-stat"><span class="ks-dot" style="background:#4ade80"></span>${counts.know} Know</span>
+    <span class="ks-stat"><span class="ks-dot" style="background:#facc15"></span>${counts.fuzzy} Fuzzy</span>
+    <span class="ks-stat"><span class="ks-dot" style="background:#c084fc"></span>${counts.unknown} ???</span>
+    <span class="ks-stat" style="color:#555">${counts.unmarked} unmarked</span>
+  `;
+
+  // update badge count
+  const marked = counts.know + counts.fuzzy + counts.unknown;
+  document.getElementById('promptBadge').textContent = marked;
+}
+
+// ── Prompt panel ─────────────────────────────────────────────
+
+function togglePromptPanel() {
+  document.getElementById('promptPanel').classList.toggle('open');
+}
+
+function generatePrompt() {
+  const know = [], fuzzy = [], unknown = [];
+  NODES.forEach(n => {
+    const kl = knowledgeMap[n.id];
+    const name = n.label.replace('\n', ' ');
+    if (kl === 'know') know.push(n);
+    else if (kl === 'fuzzy') fuzzy.push(n);
+    else if (kl === 'unknown') unknown.push(n);
+  });
+
+  if (fuzzy.length === 0 && unknown.length === 0) return '';
+
+  let prompt = `I'm learning the Claude Code plugin system. Here's my current understanding:\n\n`;
+
+  if (know.length > 0) {
+    prompt += `## Concepts I understand well\n`;
+    know.forEach(n => {
+      prompt += `- **${n.label.replace('\n', ' ')}**: ${n.desc.split('.')[0]}.\n`;
+    });
+    prompt += `\n`;
+  }
+
+  if (fuzzy.length > 0) {
+    prompt += `## Concepts I'm fuzzy on (need clarification)\n`;
+    fuzzy.forEach(n => {
+      const rels = EDGES.filter(e => e.from === n.id || e.to === n.id).map(e => {
+        const otherId = e.from === n.id ? e.to : e.from;
+        const other = NODES.find(nd => nd.id === otherId);
+        return `${other.label.replace('\n', ' ')} (${e.label.replace('\n', ' ')})`;
+      });
+      prompt += `- **${n.label.replace('\n', ' ')}**: ${n.desc.split('.')[0]}.\n`;
+      if (rels.length > 0) prompt += `  - Relationships I want to understand: ${rels.join(', ')}\n`;
+    });
+    prompt += `\n`;
+  }
+
+  if (unknown.length > 0) {
+    prompt += `## Concepts I don't understand at all\n`;
+    unknown.forEach(n => {
+      prompt += `- **${n.label.replace('\n', ' ')}**: ${n.desc.split('.')[0]}.\n`;
+    });
+    prompt += `\n`;
+  }
+
+  prompt += `## What I need\n\n`;
+  prompt += `Please help me learn these concepts with the following approach:\n\n`;
+
+  if (unknown.length > 0) {
+    prompt += `1. **Start with the basics**: Explain these concepts I marked as "???" from scratch, using simple analogies: ${unknown.map(n => n.label.replace('\n', ' ')).join(', ')}.\n`;
+  }
+  if (fuzzy.length > 0) {
+    prompt += `${unknown.length > 0 ? '2' : '1'}. **Clarify my fuzzy areas**: For these concepts I'm shaky on, focus on the specific relationships and how they connect to what I already know: ${fuzzy.map(n => n.label.replace('\n', ' ')).join(', ')}.\n`;
+  }
+  if (know.length > 0) {
+    prompt += `${(unknown.length > 0 ? 2 : 0) + (fuzzy.length > 0 ? 1 : 0) + 1}. **Build on what I know**: Reference my existing knowledge of ${know.map(n => n.label.replace('\n', ' ')).join(', ')} to anchor the explanations.\n`;
+  }
+
+  prompt += `\nUse concrete examples (file paths, commands, config snippets) and show how the pieces fit together. After the explanation, give me a small hands-on exercise to test my understanding.`;
+
+  return prompt;
+}
+
+function updatePromptOutput() {
+  const output = document.getElementById('promptOutput');
+  const prompt = generatePrompt();
+  if (!prompt) {
+    output.innerHTML = `<span class="prompt-empty">Mark concepts as Know / Fuzzy / ??? by right-clicking nodes on the map, or use the buttons in the detail panel. A tailored learning prompt will be generated here.</span>`;
+  } else {
+    output.textContent = prompt;
+  }
+}
+
+function copyPrompt() {
+  const prompt = generatePrompt();
+  if (!prompt) return;
+  navigator.clipboard.writeText(prompt).then(() => {
+    const btn = document.getElementById('btnCopy');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy Prompt'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+function resetKnowledge() {
+  Object.keys(knowledgeMap).forEach(k => delete knowledgeMap[k]);
+  requestDraw();
+  updateKnowledgeSummary();
+  updatePromptOutput();
+  updateDetail();
+}
+
+// ── Legend ────────────────────────────────────────────────────
+
+function buildLegend() {
+  const container = document.getElementById('legendItems');
+  container.innerHTML = '';
+  Object.entries(CATEGORIES).forEach(([key, cat]) => {
+    const chip = document.createElement('div');
+    chip.className = 'legend-chip' + (filterCat === key ? ' active' : '');
+    chip.innerHTML = `<span class="legend-dot" style="background:${cat.color}"></span>${cat.label}`;
+    chip.addEventListener('click', () => {
+      filterCat = filterCat === key ? null : key;
+      buildLegend();
+      requestDraw();
+    });
+    container.appendChild(chip);
+  });
+}
+
+// ── Init ─────────────────────────────────────────────────────
+
+buildLegend();
+updateKnowledgeSummary();
+resize();
+fitAll();
+</script>
+</body>
+</html>
