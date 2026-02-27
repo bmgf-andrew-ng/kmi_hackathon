@@ -1,0 +1,1641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solution Architecture Review</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2129;
+    --border: #30363d;
+    --border-hover: #484f58;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --text-dim: #6e7681;
+    --accent: #58a6ff;
+    --critical: #f85149;
+    --critical-bg: rgba(248, 81, 73, 0.15);
+    --warning: #d29922;
+    --warning-bg: rgba(210, 153, 34, 0.15);
+    --info: #58a6ff;
+    --info-bg: rgba(88, 166, 255, 0.15);
+    --suggestion: #3fb950;
+    --suggestion-bg: rgba(63, 185, 80, 0.15);
+    --purple: #bc8cff;
+    --purple-bg: rgba(188, 140, 255, 0.15);
+    --orange: #f0883e;
+    --orange-bg: rgba(240, 136, 62, 0.15);
+    --radius: 8px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --mono: 'SF Mono', 'Fira Code', 'Fira Mono', Menlo, monospace;
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .header h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.3px; }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+  .badge-critical { background: var(--critical-bg); color: var(--critical); }
+  .badge-warning { background: var(--warning-bg); color: var(--warning); }
+  .badge-info { background: var(--info-bg); color: var(--info); }
+  .badge-suggestion { background: var(--suggestion-bg); color: var(--suggestion); }
+
+  .api-key-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface2); color: var(--text-muted); font-size: 11px;
+    cursor: pointer; transition: all 0.15s; font-family: var(--font);
+  }
+  .api-key-btn:hover { border-color: var(--border-hover); color: var(--text); }
+  .api-key-btn.configured { border-color: var(--suggestion); color: var(--suggestion); }
+  .api-key-btn.configured-bedrock { border-color: var(--orange); color: var(--orange); }
+  .api-key-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+  .api-key-btn.configured .api-key-dot { background: var(--suggestion); }
+  .api-key-btn.configured-bedrock .api-key-dot { background: var(--orange); }
+
+  /* Main layout */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* Canvas area */
+  .canvas-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+    border-bottom: 1px solid var(--border); background: var(--surface2); flex-shrink: 0;
+  }
+  .toolbar-btn {
+    display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--surface);
+    color: var(--text-muted); font-size: 12px; cursor: pointer;
+    transition: all 0.15s; font-family: var(--font);
+  }
+  .toolbar-btn:hover { border-color: var(--border-hover); color: var(--text); }
+  .toolbar-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,0.08); }
+  .toolbar-btn.analyze { border-color: var(--purple); color: var(--purple); }
+  .toolbar-btn.analyze:hover { background: var(--purple-bg); }
+  .toolbar-btn.analyze.loading { opacity: 0.6; pointer-events: none; }
+  .toolbar-sep { width: 1px; height: 24px; background: var(--border); }
+  .toolbar-hint { font-size: 11px; color: var(--text-dim); margin-left: auto; }
+
+  .canvas-wrapper {
+    flex: 1; overflow: auto; position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .canvas-container { position: relative; display: inline-block; cursor: crosshair; }
+  .canvas-container.panning { cursor: grab; }
+  .canvas-container.panning:active { cursor: grabbing; }
+
+  #archImage {
+    display: block; max-width: 100%; max-height: calc(100vh - 200px);
+    user-select: none; -webkit-user-drag: none;
+  }
+
+  /* Drop zone */
+  .drop-zone {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 40px; border: 2px dashed var(--border); border-radius: 12px;
+    margin: 20px; transition: all 0.2s;
+  }
+  .drop-zone.dragover { border-color: var(--accent); background: rgba(88,166,255,0.05); }
+  .drop-zone-icon { font-size: 48px; opacity: 0.3; }
+  .drop-zone-text { font-size: 14px; color: var(--text-muted); text-align: center; line-height: 1.6; }
+  .drop-zone-text strong { color: var(--text); }
+  .drop-zone input[type="file"] { display: none; }
+  .drop-zone-btn {
+    padding: 8px 20px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text); font-size: 13px;
+    cursor: pointer; font-family: var(--font); transition: all 0.15s;
+  }
+  .drop-zone-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Annotation rectangles */
+  .annotation-rect {
+    position: absolute; border: 2px solid; border-radius: 3px;
+    pointer-events: none; transition: opacity 0.15s;
+  }
+  .annotation-rect.severity-critical { border-color: var(--critical); background: rgba(248,81,73,0.12); }
+  .annotation-rect.severity-warning { border-color: var(--warning); background: rgba(210,153,34,0.12); }
+  .annotation-rect.severity-info { border-color: var(--info); background: rgba(88,166,255,0.12); }
+  .annotation-rect.severity-suggestion { border-color: var(--suggestion); background: rgba(63,185,80,0.12); }
+  .annotation-rect.selected { box-shadow: 0 0 0 2px rgba(88,166,255,0.4); }
+  .annotation-rect.dimmed { opacity: 0.3; }
+
+  .annotation-label {
+    position: absolute; top: -1px; left: -1px; font-size: 10px; font-weight: 700;
+    padding: 1px 6px; border-radius: 3px 0 3px 0; color: #fff; line-height: 1.4;
+    pointer-events: auto; cursor: pointer;
+  }
+  .severity-critical .annotation-label { background: var(--critical); }
+  .severity-warning .annotation-label { background: var(--warning); }
+  .severity-info .annotation-label { background: var(--info); }
+  .severity-suggestion .annotation-label { background: var(--suggestion); }
+
+  .draw-preview {
+    position: absolute; border: 2px dashed var(--accent);
+    background: rgba(88,166,255,0.08); border-radius: 3px; pointer-events: none;
+  }
+
+  /* Annotations panel */
+  .annotations-panel {
+    width: 380px; border-left: 1px solid var(--border); background: var(--surface);
+    display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+  }
+
+  /* Architecture description panel */
+  .arch-description {
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+    max-height: 45%; display: flex; flex-direction: column;
+  }
+  .arch-description.hidden { display: none; }
+  .arch-desc-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; cursor: pointer; user-select: none; flex-shrink: 0;
+  }
+  .arch-desc-header h2 {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--purple); display: flex; align-items: center; gap: 6px;
+  }
+  .arch-desc-toggle { font-size: 10px; color: var(--text-dim); }
+  .arch-desc-body { padding: 0 16px 12px; overflow-y: auto; flex: 1; }
+  .arch-desc-body.collapsed { display: none; }
+  .arch-desc-body::-webkit-scrollbar { width: 6px; }
+  .arch-desc-body::-webkit-scrollbar-track { background: transparent; }
+  .arch-desc-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .arch-desc-content { font-size: 12px; line-height: 1.6; color: var(--text-muted); }
+  .arch-desc-content h3 {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.4px; color: var(--text); margin: 10px 0 6px;
+  }
+  .arch-desc-content h3:first-child { margin-top: 0; }
+
+  .component-list { list-style: none; padding: 0; margin: 0; }
+  .component-list li { padding: 4px 0 4px 12px; position: relative; font-size: 12px; line-height: 1.5; }
+  .component-list li::before {
+    content: ''; position: absolute; left: 0; top: 10px;
+    width: 5px; height: 5px; border-radius: 50%; background: var(--purple); opacity: 0.6;
+  }
+  .component-name { color: var(--text); font-weight: 500; }
+  .relationship-arrow { color: var(--purple); font-weight: 500; margin: 0 4px; }
+
+  .arch-desc-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .arch-desc-actions button {
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+    background: transparent; color: var(--text-dim); font-size: 10px;
+    cursor: pointer; font-family: var(--font); transition: all 0.15s;
+  }
+  .arch-desc-actions button:hover { border-color: var(--border-hover); color: var(--text-muted); }
+
+  /* Loading spinner */
+  .spinner {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid var(--purple); border-top-color: transparent;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .analyzing-overlay {
+    position: absolute; inset: 0; background: rgba(13, 17, 23, 0.7);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; z-index: 20; backdrop-filter: blur(2px);
+  }
+  .analyzing-overlay .spinner { width: 28px; height: 28px; border-width: 3px; }
+  .analyzing-overlay span { font-size: 13px; color: var(--purple); font-weight: 500; }
+
+  .panel-header {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .panel-header h2 {
+    font-size: 13px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--text-muted);
+  }
+  .annotation-count {
+    font-size: 11px; background: var(--surface2); padding: 2px 8px;
+    border-radius: 10px; color: var(--text-dim);
+  }
+
+  .annotations-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .annotations-list::-webkit-scrollbar { width: 6px; }
+  .annotations-list::-webkit-scrollbar-track { background: transparent; }
+  .annotations-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .annotation-card {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    margin-bottom: 8px; overflow: hidden; transition: all 0.15s; background: var(--surface2);
+  }
+  .annotation-card:hover { border-color: var(--border-hover); }
+  .annotation-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(88,166,255,0.2); }
+
+  .card-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; }
+  .card-number {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .card-number.critical { background: var(--critical); }
+  .card-number.warning { background: var(--warning); }
+  .card-number.info { background: var(--info); }
+  .card-number.suggestion { background: var(--suggestion); }
+
+  .card-title {
+    flex: 1; font-size: 12px; color: var(--text-muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .card-title.has-comment { color: var(--text); }
+
+  .card-delete {
+    background: none; border: none; color: var(--text-dim); cursor: pointer;
+    font-size: 14px; padding: 2px; line-height: 1; border-radius: 4px;
+    transition: all 0.15s; display: flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px;
+  }
+  .card-delete:hover { color: var(--critical); background: var(--critical-bg); }
+
+  .card-body { padding: 0 12px 12px; }
+  .severity-select { display: flex; gap: 4px; margin-bottom: 8px; }
+  .sev-btn {
+    flex: 1; padding: 4px 0; border: 1px solid var(--border); border-radius: 4px;
+    background: transparent; font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.3px; cursor: pointer; transition: all 0.15s; font-family: var(--font);
+  }
+  .sev-btn.critical { color: var(--critical); }
+  .sev-btn.critical.active { background: var(--critical-bg); border-color: var(--critical); }
+  .sev-btn.warning { color: var(--warning); }
+  .sev-btn.warning.active { background: var(--warning-bg); border-color: var(--warning); }
+  .sev-btn.info { color: var(--info); }
+  .sev-btn.info.active { background: var(--info-bg); border-color: var(--info); }
+  .sev-btn.suggestion { color: var(--suggestion); }
+  .sev-btn.suggestion.active { background: var(--suggestion-bg); border-color: var(--suggestion); }
+
+  /* Component chip picker */
+  .component-picker {
+    margin-bottom: 8px;
+  }
+  .component-picker-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.3px; color: var(--text-dim); margin-bottom: 4px;
+  }
+  .component-chips {
+    display: flex; flex-wrap: wrap; gap: 4px;
+  }
+  .component-chip {
+    font-size: 10px; padding: 3px 8px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--border); background: transparent; color: var(--text-dim);
+    font-family: var(--font); transition: all 0.15s; font-weight: 500;
+    white-space: nowrap; line-height: 1.3;
+  }
+  .component-chip:hover { border-color: var(--purple); color: var(--purple); }
+  .component-chip.linked {
+    background: var(--purple-bg); border-color: var(--purple); color: var(--purple);
+  }
+
+  .comment-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 12px; font-family: var(--font); padding: 8px 10px;
+    resize: vertical; min-height: 60px; line-height: 1.5; transition: border-color 0.15s;
+  }
+  .comment-input:focus { outline: none; border-color: var(--accent); }
+  .comment-input::placeholder { color: var(--text-dim); }
+
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 40px 20px; text-align: center; gap: 8px; color: var(--text-dim);
+  }
+  .empty-state-icon { font-size: 32px; opacity: 0.4; }
+  .empty-state-text { font-size: 12px; line-height: 1.5; }
+
+  /* Prompt section */
+  .prompt-section { border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+  .prompt-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px; cursor: pointer; user-select: none;
+  }
+  .prompt-header h3 {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;
+  }
+  .prompt-toggle { font-size: 11px; color: var(--text-dim); transition: transform 0.2s; }
+  .prompt-content { padding: 0 20px 16px; max-height: 300px; overflow-y: auto; }
+  .prompt-content.collapsed { display: none; }
+
+  .prompt-text {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; font-family: var(--mono); font-size: 12px; line-height: 1.6;
+    color: var(--text-muted); white-space: pre-wrap; word-break: break-word;
+    min-height: 80px; max-height: 220px; overflow-y: auto;
+  }
+  .prompt-text::-webkit-scrollbar { width: 6px; }
+  .prompt-text::-webkit-scrollbar-track { background: transparent; }
+  .prompt-text::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .prompt-actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+  .copy-btn {
+    display: flex; align-items: center; gap: 6px; padding: 7px 16px;
+    border: 1px solid var(--accent); border-radius: 6px; background: rgba(88,166,255,0.1);
+    color: var(--accent); font-size: 12px; font-weight: 500; cursor: pointer;
+    transition: all 0.15s; font-family: var(--font);
+  }
+  .copy-btn:hover { background: rgba(88,166,255,0.2); }
+  .copy-btn.copied { border-color: var(--suggestion); color: var(--suggestion); background: var(--suggestion-bg); }
+  .clear-btn {
+    padding: 7px 16px; border: 1px solid var(--border); border-radius: 6px;
+    background: transparent; color: var(--text-muted); font-size: 12px;
+    cursor: pointer; transition: all 0.15s; font-family: var(--font);
+  }
+  .clear-btn:hover { border-color: var(--critical); color: var(--critical); }
+
+  /* Zoom controls */
+  .zoom-controls { position: absolute; bottom: 12px; left: 12px; display: flex; gap: 4px; z-index: 10; }
+  .zoom-btn {
+    width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text-muted); font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  }
+  .zoom-btn:hover { border-color: var(--border-hover); color: var(--text); }
+  .zoom-label {
+    height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text-dim); font-size: 11px;
+    display: flex; align-items: center; font-family: var(--mono);
+  }
+
+  .context-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
+  .context-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.3px; color: var(--text-dim); white-space: nowrap;
+  }
+  .context-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 12px; font-family: var(--font); padding: 6px 10px;
+    transition: border-color 0.15s;
+  }
+  .context-input:focus { outline: none; border-color: var(--accent); }
+  .context-input::placeholder { color: var(--text-dim); }
+
+  /* Modal overlay */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; backdrop-filter: blur(4px);
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; width: 480px; max-width: 90vw; padding: 24px;
+  }
+  .modal h2 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .modal p { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }
+  .modal label {
+    display: block; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.4px; color: var(--text-dim); margin-bottom: 6px;
+  }
+  .modal input[type="password"], .modal input[type="text"], .modal select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 13px; font-family: var(--mono); padding: 8px 12px;
+    margin-bottom: 12px; transition: border-color 0.15s;
+  }
+  .modal input:focus, .modal select:focus { outline: none; border-color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .modal-btn {
+    padding: 7px 18px; border-radius: 6px; font-size: 12px; font-weight: 500;
+    cursor: pointer; font-family: var(--font); transition: all 0.15s;
+  }
+  .modal-btn.secondary { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
+  .modal-btn.secondary:hover { border-color: var(--border-hover); color: var(--text); }
+  .modal-btn.primary { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
+  .modal-btn.primary:hover { opacity: 0.9; }
+  .modal-btn.danger { background: transparent; border: 1px solid var(--critical); color: var(--critical); }
+  .modal-btn.danger:hover { background: var(--critical-bg); }
+  .modal-note { font-size: 10px; color: var(--text-dim); margin-top: -6px; margin-bottom: 12px; line-height: 1.5; }
+
+  /* Provider toggle */
+  .provider-toggle {
+    display: flex; gap: 0; margin-bottom: 16px;
+    border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+  }
+  .provider-option {
+    flex: 1; padding: 8px 12px; text-align: center; font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; font-family: var(--font);
+    background: transparent; border: none; color: var(--text-muted);
+  }
+  .provider-option:not(:last-child) { border-right: 1px solid var(--border); }
+  .provider-option:hover { background: var(--surface2); color: var(--text); }
+  .provider-option.active-anthropic { background: var(--suggestion-bg); color: var(--suggestion); }
+  .provider-option.active-bedrock { background: var(--orange-bg); color: var(--orange); }
+
+  .provider-fields { display: none; }
+  .provider-fields.visible { display: block; }
+
+  .cors-warning {
+    background: var(--warning-bg); border: 1px solid var(--warning); border-radius: 6px;
+    padding: 10px 12px; font-size: 11px; color: var(--warning); line-height: 1.5; margin-bottom: 12px;
+  }
+  .cors-warning strong { display: block; margin-bottom: 2px; }
+
+  /* Error toast */
+  .error-toast {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--critical-bg); border: 1px solid var(--critical); color: var(--critical);
+    padding: 10px 20px; border-radius: 8px; font-size: 12px; z-index: 200;
+    max-width: 600px; text-align: center; line-height: 1.5; animation: fadeInDown 0.2s ease;
+  }
+  @keyframes fadeInDown {
+    from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+
+  @media (max-width: 900px) {
+    .main { flex-direction: column; }
+    .annotations-panel { width: 100%; max-height: 300px; border-left: none; border-top: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>Solution Architecture Review</h1>
+    <div class="header-actions">
+      <div id="headerBadges" style="display:flex;gap:8px;"></div>
+      <button class="api-key-btn" id="apiKeyBtn" onclick="showApiKeyModal()">
+        <div class="api-key-dot"></div>
+        <span id="apiKeyLabel">Set API Key</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="canvas-area">
+      <div class="toolbar" id="toolbar" style="display:none;">
+        <button class="toolbar-btn active" id="drawBtn" onclick="setTool('draw')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+          Draw Region
+        </button>
+        <button class="toolbar-btn" id="selectBtn" onclick="setTool('select')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+          Select
+        </button>
+        <div class="toolbar-sep"></div>
+        <button class="toolbar-btn analyze" id="analyzeBtn" onclick="analyzeArchitecture()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          Analyze Diagram
+        </button>
+        <div class="toolbar-sep"></div>
+        <button class="toolbar-btn" id="undoBtn" onclick="undoLast()" title="Undo last annotation">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Undo
+        </button>
+        <span class="toolbar-hint" id="toolbarHint">Click and drag to draw a region</span>
+      </div>
+
+      <div class="canvas-wrapper" id="canvasWrapper">
+        <div class="drop-zone" id="dropZone">
+          <div class="drop-zone-icon">&#128206;</div>
+          <div class="drop-zone-text">
+            <strong>Drop your architecture diagram here</strong><br>
+            or paste from clipboard with <kbd style="background:var(--surface2);padding:1px 6px;border-radius:3px;border:1px solid var(--border);font-size:12px;">Cmd+V</kbd><br>
+            Supports PNG, JPG, SVG, WebP
+          </div>
+          <button class="drop-zone-btn" onclick="document.getElementById('fileInput').click()">Choose File</button>
+          <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <div class="canvas-container" id="canvasContainer" style="display:none;">
+          <img id="archImage" draggable="false">
+          <div id="annotationOverlay"></div>
+          <div class="draw-preview" id="drawPreview" style="display:none;"></div>
+        </div>
+
+        <div class="zoom-controls" id="zoomControls" style="display:none;">
+          <button class="zoom-btn" onclick="zoom(-0.1)" title="Zoom out">&minus;</button>
+          <span class="zoom-label" id="zoomLabel">100%</span>
+          <button class="zoom-btn" onclick="zoom(0.1)" title="Zoom in">+</button>
+          <button class="zoom-btn" onclick="zoomFit()" title="Fit to view">&#8596;</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="annotations-panel">
+      <div class="arch-description hidden" id="archDescription">
+        <div class="arch-desc-header" onclick="toggleArchDesc()">
+          <h2>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            Architecture Overview
+          </h2>
+          <span class="arch-desc-toggle" id="archDescToggle">&#9660;</span>
+        </div>
+        <div class="arch-desc-body" id="archDescBody">
+          <div class="arch-desc-content" id="archDescContent"></div>
+          <div class="arch-desc-actions">
+            <button onclick="analyzeArchitecture()" title="Re-analyze">Re-analyze</button>
+            <button onclick="clearAnalysis()">Dismiss</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-header">
+        <h2>Annotations</h2>
+        <span class="annotation-count" id="annotationCount">0</span>
+      </div>
+      <div class="annotations-list" id="annotationsList">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-state-icon">&#9998;</div>
+          <div class="empty-state-text">
+            Load an architecture diagram,<br>then draw rectangles around<br>areas that need feedback.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="prompt-section">
+    <div class="prompt-header" onclick="togglePrompt()">
+      <h3>
+        Generated Review Prompt
+        <span class="annotation-count" id="promptAnnotationCount">0 annotations</span>
+      </h3>
+      <span class="prompt-toggle" id="promptToggle">&#9660;</span>
+    </div>
+    <div class="prompt-content" id="promptContent">
+      <div class="context-row">
+        <span class="context-label">System name</span>
+        <input class="context-input" id="systemName" placeholder="e.g. Payment Processing Platform" oninput="updatePrompt()">
+      </div>
+      <div class="context-row">
+        <span class="context-label">Extra context</span>
+        <input class="context-input" id="extraContext" placeholder="e.g. Migrating from monolith to microservices, AWS-based" oninput="updatePrompt()">
+      </div>
+      <div class="prompt-text" id="promptText">Upload a diagram and add annotations to generate a review prompt.</div>
+      <div class="prompt-actions">
+        <button class="clear-btn" onclick="clearAll()">Clear All</button>
+        <button class="copy-btn" id="copyBtn" onclick="copyPrompt()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy Prompt
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- API Key Modal -->
+  <div class="modal-overlay hidden" id="apiKeyModal">
+    <div class="modal">
+      <h2>API Configuration</h2>
+      <p>Configure your AI provider to enable diagram analysis. Credentials are stored locally in your browser only.</p>
+
+      <div class="provider-toggle">
+        <button class="provider-option active-anthropic" id="providerAnthropicBtn" onclick="switchProvider('anthropic')">Anthropic API</button>
+        <button class="provider-option" id="providerBedrockBtn" onclick="switchProvider('bedrock')">AWS Bedrock</button>
+      </div>
+
+      <!-- Anthropic fields -->
+      <div class="provider-fields visible" id="anthropicFields">
+        <label for="apiKeyInput">API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="sk-ant-...">
+        <div class="modal-note">Your key never leaves your browser except to call the Anthropic API directly.</div>
+
+        <label for="modelSelectAnthropic">Model</label>
+        <select id="modelSelectAnthropic">
+          <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (Recommended)</option>
+          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Faster)</option>
+          <option value="claude-opus-4-0-20250115">Claude Opus 4 (Most capable)</option>
+        </select>
+      </div>
+
+      <!-- AWS Bedrock fields -->
+      <div class="provider-fields" id="bedrockFields">
+        <div class="cors-warning">
+          <strong>Browser CORS Note</strong>
+          AWS Bedrock doesn't natively allow browser requests. If you hit a CORS error, you'll need a proxy (e.g. API Gateway in front of Bedrock) or a browser extension for local dev. Enter your proxy base URL below, or leave blank to call Bedrock directly.
+        </div>
+
+        <label for="bedrockAccessKey">Access Key ID</label>
+        <input type="password" id="bedrockAccessKey" placeholder="AKIA...">
+
+        <label for="bedrockSecretKey">Secret Access Key</label>
+        <input type="password" id="bedrockSecretKey" placeholder="wJalr...">
+
+        <label for="bedrockSessionToken">Session Token <span style="font-weight:400;text-transform:none;">(optional — for temporary credentials)</span></label>
+        <input type="password" id="bedrockSessionToken" placeholder="FwoG...">
+
+        <label for="bedrockRegion">Region</label>
+        <select id="bedrockRegion">
+          <option value="us-east-1">us-east-1 (N. Virginia)</option>
+          <option value="us-west-2">us-west-2 (Oregon)</option>
+          <option value="eu-west-1">eu-west-1 (Ireland)</option>
+          <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
+          <option value="ap-southeast-1">ap-southeast-1 (Singapore)</option>
+          <option value="ap-southeast-2">ap-southeast-2 (Sydney)</option>
+          <option value="ap-northeast-1">ap-northeast-1 (Tokyo)</option>
+        </select>
+
+        <label for="bedrockProxyUrl">Proxy Base URL <span style="font-weight:400;text-transform:none;">(optional)</span></label>
+        <input type="text" id="bedrockProxyUrl" placeholder="e.g. https://my-proxy.execute-api.us-east-1.amazonaws.com">
+        <div class="modal-note">If set, requests go to {proxy}/model/{id}/invoke instead of Bedrock directly. Your proxy must forward to Bedrock and handle CORS.</div>
+
+        <label for="modelSelectBedrock">Model</label>
+        <select id="modelSelectBedrock">
+          <option value="anthropic.claude-sonnet-4-20250514-v1:0">Claude Sonnet 4 (Recommended)</option>
+          <option value="anthropic.claude-haiku-4-5-20251001-v1:0">Claude Haiku 4.5 (Faster)</option>
+          <option value="anthropic.claude-opus-4-0-20250115-v1:0">Claude Opus 4 (Most capable)</option>
+        </select>
+        <div class="modal-note">Region prefix (us./eu./ap.) is added automatically based on your selected region to form the inference profile ID.</div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="modal-btn danger" id="clearKeyBtn" onclick="clearCreds()" style="display:none;">Clear</button>
+        <div style="flex:1;"></div>
+        <button class="modal-btn secondary" onclick="hideApiKeyModal()">Cancel</button>
+        <button class="modal-btn primary" onclick="saveCreds()">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ── State ──
+  const state = {
+    annotations: [],
+    selectedId: null,
+    tool: 'draw',
+    zoom: 1,
+    imageLoaded: false,
+    imageDataUrl: null,
+    nextId: 1,
+    promptCollapsed: false,
+    archDescCollapsed: false,
+    analysisResult: null,
+    analyzing: false,
+    modalProvider: 'anthropic'
+  };
+
+  const SEVERITY_COLORS = {
+    critical: { label: 'Critical', color: '#f85149' },
+    warning:  { label: 'Warning',  color: '#d29922' },
+    info:     { label: 'Info',     color: '#58a6ff' },
+    suggestion: { label: 'Suggestion', color: '#3fb950' }
+  };
+
+  // ── Storage keys ──
+  const STORAGE = {
+    provider: 'arch-review-provider',
+    anthropicKey: 'arch-review-api-key',
+    anthropicModel: 'arch-review-model',
+    bedrockAccessKey: 'arch-review-bedrock-ak',
+    bedrockSecretKey: 'arch-review-bedrock-sk',
+    bedrockSessionToken: 'arch-review-bedrock-st',
+    bedrockRegion: 'arch-review-bedrock-region',
+    bedrockModel: 'arch-review-bedrock-model',
+    bedrockProxy: 'arch-review-bedrock-proxy'
+  };
+
+  // ── Elements ──
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const canvasContainer = document.getElementById('canvasContainer');
+  const canvasWrapper = document.getElementById('canvasWrapper');
+  const archImage = document.getElementById('archImage');
+  const annotationOverlay = document.getElementById('annotationOverlay');
+  const drawPreview = document.getElementById('drawPreview');
+  const annotationsList = document.getElementById('annotationsList');
+  const promptText = document.getElementById('promptText');
+
+  // ── Credential Management ──
+  function getProvider() { return localStorage.getItem(STORAGE.provider) || 'anthropic'; }
+
+  function getAnthropicConfig() {
+    return {
+      apiKey: localStorage.getItem(STORAGE.anthropicKey) || '',
+      model: localStorage.getItem(STORAGE.anthropicModel) || 'claude-sonnet-4-20250514'
+    };
+  }
+
+  function getBedrockConfig() {
+    return {
+      accessKey: localStorage.getItem(STORAGE.bedrockAccessKey) || '',
+      secretKey: localStorage.getItem(STORAGE.bedrockSecretKey) || '',
+      sessionToken: localStorage.getItem(STORAGE.bedrockSessionToken) || '',
+      region: localStorage.getItem(STORAGE.bedrockRegion) || 'us-east-1',
+      model: localStorage.getItem(STORAGE.bedrockModel) || 'anthropic.claude-sonnet-4-20250514-v1:0',
+      proxy: localStorage.getItem(STORAGE.bedrockProxy) || ''
+    };
+  }
+
+  function isConfigured() {
+    const provider = getProvider();
+    if (provider === 'anthropic') return !!getAnthropicConfig().apiKey;
+    return !!(getBedrockConfig().accessKey && getBedrockConfig().secretKey);
+  }
+
+  function updateApiKeyUI() {
+    const provider = getProvider();
+    const configured = isConfigured();
+    const btn = document.getElementById('apiKeyBtn');
+    const label = document.getElementById('apiKeyLabel');
+    btn.className = 'api-key-btn';
+    if (configured && provider === 'anthropic') {
+      btn.classList.add('configured');
+      label.textContent = 'Anthropic API';
+    } else if (configured && provider === 'bedrock') {
+      btn.classList.add('configured-bedrock');
+      label.textContent = 'AWS Bedrock';
+    } else {
+      label.textContent = 'Set API Key';
+    }
+  }
+
+  function switchProvider(provider) {
+    state.modalProvider = provider;
+    document.getElementById('providerAnthropicBtn').className = 'provider-option' + (provider === 'anthropic' ? ' active-anthropic' : '');
+    document.getElementById('providerBedrockBtn').className = 'provider-option' + (provider === 'bedrock' ? ' active-bedrock' : '');
+    document.getElementById('anthropicFields').classList.toggle('visible', provider === 'anthropic');
+    document.getElementById('bedrockFields').classList.toggle('visible', provider === 'bedrock');
+  }
+
+  function showApiKeyModal() {
+    document.getElementById('apiKeyModal').classList.remove('hidden');
+    const provider = getProvider();
+    state.modalProvider = provider;
+    switchProvider(provider);
+
+    // Load Anthropic fields
+    const ac = getAnthropicConfig();
+    document.getElementById('apiKeyInput').value = ac.apiKey;
+    document.getElementById('modelSelectAnthropic').value = ac.model;
+
+    // Load Bedrock fields
+    const bc = getBedrockConfig();
+    document.getElementById('bedrockAccessKey').value = bc.accessKey;
+    document.getElementById('bedrockSecretKey').value = bc.secretKey;
+    document.getElementById('bedrockSessionToken').value = bc.sessionToken;
+    document.getElementById('bedrockRegion').value = bc.region;
+    document.getElementById('bedrockProxyUrl').value = bc.proxy;
+    document.getElementById('modelSelectBedrock').value = bc.model;
+
+    document.getElementById('clearKeyBtn').style.display = isConfigured() ? 'block' : 'none';
+  }
+
+  function hideApiKeyModal() {
+    document.getElementById('apiKeyModal').classList.add('hidden');
+  }
+
+  function saveCreds() {
+    const provider = state.modalProvider;
+    localStorage.setItem(STORAGE.provider, provider);
+
+    // Always save both sets so switching doesn't lose data
+    localStorage.setItem(STORAGE.anthropicKey, document.getElementById('apiKeyInput').value.trim());
+    localStorage.setItem(STORAGE.anthropicModel, document.getElementById('modelSelectAnthropic').value);
+
+    localStorage.setItem(STORAGE.bedrockAccessKey, document.getElementById('bedrockAccessKey').value.trim());
+    localStorage.setItem(STORAGE.bedrockSecretKey, document.getElementById('bedrockSecretKey').value.trim());
+    localStorage.setItem(STORAGE.bedrockSessionToken, document.getElementById('bedrockSessionToken').value.trim());
+    localStorage.setItem(STORAGE.bedrockRegion, document.getElementById('bedrockRegion').value);
+    localStorage.setItem(STORAGE.bedrockModel, document.getElementById('modelSelectBedrock').value);
+    localStorage.setItem(STORAGE.bedrockProxy, document.getElementById('bedrockProxyUrl').value.trim());
+
+    updateApiKeyUI();
+    hideApiKeyModal();
+  }
+
+  function clearCreds() {
+    Object.values(STORAGE).forEach(k => localStorage.removeItem(k));
+    document.getElementById('apiKeyInput').value = '';
+    document.getElementById('bedrockAccessKey').value = '';
+    document.getElementById('bedrockSecretKey').value = '';
+    document.getElementById('bedrockSessionToken').value = '';
+    document.getElementById('bedrockProxyUrl').value = '';
+    document.getElementById('clearKeyBtn').style.display = 'none';
+    updateApiKeyUI();
+    hideApiKeyModal();
+  }
+
+  document.getElementById('apiKeyModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) hideApiKeyModal();
+  });
+
+  // ── Error Toast ──
+  function showError(message) {
+    const existing = document.querySelector('.error-toast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.className = 'error-toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 6000);
+  }
+
+  // ── AWS SigV4 Signing ──
+  async function sha256(message) {
+    const data = new TextEncoder().encode(message);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    return hexEncode(hash);
+  }
+
+  function hexEncode(buffer) {
+    return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function hmacSha256(key, message) {
+    const keyData = typeof key === 'string' ? new TextEncoder().encode(key) : key;
+    const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const sig = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(message));
+    return new Uint8Array(sig);
+  }
+
+  async function getSignatureKey(secretKey, dateStamp, region, service) {
+    const kDate = await hmacSha256('AWS4' + secretKey, dateStamp);
+    const kRegion = await hmacSha256(kDate, region);
+    const kService = await hmacSha256(kRegion, service);
+    return await hmacSha256(kService, 'aws4_request');
+  }
+
+  // SigV4 URI encoding per RFC 3986 — encode everything except unreserved chars
+  function sigV4UriEncode(str) {
+    return encodeURIComponent(str).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+  }
+
+  async function signAwsRequest({ method, url, body, region, service, credentials }) {
+    const parsedUrl = new URL(url);
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.substring(0, 8);
+
+    const host = parsedUrl.host;
+    // Build canonical URI: URI-encode each path segment per SigV4 spec
+    const canonicalUri = parsedUrl.pathname.split('/').map(seg => sigV4UriEncode(seg)).join('/');
+    const queryString = [...parsedUrl.searchParams].sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => `${sigV4UriEncode(k)}=${sigV4UriEncode(v)}`).join('&');
+    const payloadHash = await sha256(body);
+
+    // Build headers to sign
+    const headersToSign = { 'host': host, 'x-amz-date': amzDate, 'x-amz-content-sha256': payloadHash };
+    if (credentials.sessionToken) {
+      headersToSign['x-amz-security-token'] = credentials.sessionToken;
+    }
+
+    const sortedHeaderKeys = Object.keys(headersToSign).sort();
+    const canonicalHeaders = sortedHeaderKeys.map(k => `${k}:${headersToSign[k]}\n`).join('');
+    const signedHeaders = sortedHeaderKeys.join(';');
+
+    const canonicalRequest = [method, canonicalUri, queryString, canonicalHeaders, signedHeaders, payloadHash].join('\n');
+    const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+    const stringToSign = ['AWS4-HMAC-SHA256', amzDate, credentialScope, await sha256(canonicalRequest)].join('\n');
+
+    const signingKey = await getSignatureKey(credentials.secretKey, dateStamp, region, service);
+    const signatureBytes = await hmacSha256(signingKey, stringToSign);
+    const signature = hexEncode(signatureBytes.buffer);
+
+    const authorization = `AWS4-HMAC-SHA256 Credential=${credentials.accessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    const result = {
+      'Authorization': authorization,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': payloadHash
+    };
+    if (credentials.sessionToken) {
+      result['x-amz-security-token'] = credentials.sessionToken;
+    }
+    return result;
+  }
+
+  // ── Image Loading ──
+  function loadImage(src) {
+    archImage.onload = () => {
+      state.imageLoaded = true;
+      state.imageDataUrl = src;
+      dropZone.style.display = 'none';
+      canvasContainer.style.display = 'inline-block';
+      document.getElementById('toolbar').style.display = 'flex';
+      document.getElementById('zoomControls').style.display = 'flex';
+      zoomFit();
+    };
+    archImage.src = src;
+  }
+
+  function handleFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = e => loadImage(e.target.result);
+    reader.readAsDataURL(file);
+  }
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+
+  canvasWrapper.addEventListener('dragover', e => { e.preventDefault(); });
+  canvasWrapper.addEventListener('drop', e => {
+    e.preventDefault();
+    if (e.dataTransfer.files.length) { clearAll(); handleFile(e.dataTransfer.files[0]); }
+  });
+
+  fileInput.addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+  document.addEventListener('paste', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        if (state.imageLoaded) clearAll();
+        handleFile(item.getAsFile());
+        return;
+      }
+    }
+  });
+
+  // ── Analysis Prompt (shared) ──
+  const ANALYSIS_PROMPT = `Analyze this solution architecture diagram. Provide a structured breakdown in exactly this JSON format (no markdown fences, just raw JSON):
+
+{
+  "summary": "A 1-2 sentence high-level description of what this architecture does",
+  "components": [
+    {
+      "name": "Component Name",
+      "type": "one of: service, database, queue, cache, gateway, load-balancer, cdn, storage, client, external-api, network, container, function, other",
+      "description": "Brief description of what this component does"
+    }
+  ],
+  "relationships": [
+    {
+      "from": "Component A Name",
+      "to": "Component B Name",
+      "description": "What flows between them or how they interact (e.g. 'REST API calls', 'publishes events', 'reads/writes data')"
+    }
+  ],
+  "patterns": ["List of architectural patterns observed, e.g. 'microservices', 'event-driven', 'CQRS', 'API gateway pattern'"],
+  "tech_stack": ["List of specific technologies/services visible, e.g. 'AWS Lambda', 'PostgreSQL', 'Redis', 'Kafka'"]
+}
+
+Be thorough — identify every component and connection visible in the diagram. Use the exact names shown in the diagram for components.`;
+
+  // ── AI Analysis ──
+  async function analyzeArchitecture() {
+    if (state.analyzing) return;
+    if (!state.imageLoaded || !state.imageDataUrl) {
+      showError('Upload a diagram first before analyzing.');
+      return;
+    }
+    if (!isConfigured()) {
+      showApiKeyModal();
+      return;
+    }
+
+    state.analyzing = true;
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    analyzeBtn.classList.add('loading');
+    analyzeBtn.innerHTML = '<span class="spinner"></span> Analyzing...';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'analyzing-overlay';
+    overlay.id = 'analyzingOverlay';
+    overlay.innerHTML = '<div class="spinner"></div><span>Analyzing architecture diagram...</span>';
+    canvasWrapper.appendChild(overlay);
+
+    try {
+      const match = state.imageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+      if (!match) throw new Error('Could not parse image data.');
+
+      const mediaType = match[1];
+      const base64Data = match[2];
+      const provider = getProvider();
+
+      let responseText;
+
+      if (provider === 'anthropic') {
+        responseText = await callAnthropic(mediaType, base64Data);
+      } else {
+        responseText = await callBedrock(mediaType, base64Data);
+      }
+
+      // Parse JSON from response
+      let json;
+      try {
+        const cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        json = JSON.parse(cleaned);
+      } catch (parseErr) {
+        throw new Error('Could not parse AI response. Try re-analyzing.');
+      }
+
+      state.analysisResult = json;
+      renderAnalysis();
+      updatePrompt();
+
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      state.analyzing = false;
+      analyzeBtn.classList.remove('loading');
+      analyzeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg> Analyze Diagram`;
+      const ov = document.getElementById('analyzingOverlay');
+      if (ov) ov.remove();
+    }
+  }
+
+  async function callAnthropic(mediaType, base64Data) {
+    const config = getAnthropicConfig();
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': config.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: 2048,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+            { type: 'text', text: ANALYSIS_PROMPT }
+          ]
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Anthropic API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.content?.[0]?.text || '';
+  }
+
+  // Derive inference profile region prefix from AWS region
+  function bedrockRegionPrefix(region) {
+    if (region.startsWith('us-')) return 'us';
+    if (region.startsWith('eu-')) return 'eu';
+    if (region.startsWith('ap-')) return 'ap';
+    return 'us'; // fallback
+  }
+
+  async function callBedrock(mediaType, base64Data) {
+    const config = getBedrockConfig();
+    const baseModelId = config.model;
+
+    // Newer Claude models on Bedrock require inference profiles (region-prefixed IDs)
+    // e.g. "us.anthropic.claude-sonnet-4-20250514-v1:0"
+    const prefix = bedrockRegionPrefix(config.region);
+    const modelId = baseModelId.includes('.') && !baseModelId.startsWith('arn:')
+      ? `${prefix}.${baseModelId}`
+      : baseModelId;
+
+    // Bedrock InvokeModel uses the Anthropic Messages format
+    const requestBody = JSON.stringify({
+      anthropic_version: 'bedrock-2023-05-31',
+      max_tokens: 2048,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+          { type: 'text', text: ANALYSIS_PROMPT }
+        ]
+      }]
+    });
+
+    // Build the URL — use proxy if configured, otherwise direct
+    // Don't encodeURIComponent the model ID: the colon in "v1:0" is valid in URL paths
+    // and encoding it causes a signing mismatch (browser decodes %3A back to : in URL.pathname)
+    let url;
+    if (config.proxy) {
+      const base = config.proxy.replace(/\/+$/, '');
+      url = `${base}/model/${modelId}/invoke`;
+    } else {
+      url = `https://bedrock-runtime.${config.region}.amazonaws.com/model/${modelId}/invoke`;
+    }
+
+    // Sign the request with SigV4
+    const sigHeaders = await signAwsRequest({
+      method: 'POST',
+      url: url,
+      body: requestBody,
+      region: config.region,
+      service: 'bedrock',
+      credentials: {
+        accessKey: config.accessKey,
+        secretKey: config.secretKey,
+        sessionToken: config.sessionToken || undefined
+      }
+    });
+
+    const fetchHeaders = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      ...sigHeaders
+    };
+
+    let response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: fetchHeaders,
+        body: requestBody
+      });
+    } catch (networkErr) {
+      if (networkErr.message?.includes('Failed to fetch') || networkErr.name === 'TypeError') {
+        throw new Error(
+          'Network error calling Bedrock — this is likely a CORS issue. ' +
+          'Configure a proxy URL in the API settings (e.g. an API Gateway endpoint), ' +
+          'or use a CORS browser extension for local development.'
+        );
+      }
+      throw networkErr;
+    }
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      const msg = err.message || err.Message || JSON.stringify(err);
+      throw new Error(`Bedrock API error (${response.status}): ${msg}`);
+    }
+
+    const data = await response.json();
+    return data.content?.[0]?.text || '';
+  }
+
+  // ── Analysis Rendering ──
+  function renderAnalysis() {
+    const panel = document.getElementById('archDescription');
+    const content = document.getElementById('archDescContent');
+    const result = state.analysisResult;
+
+    if (!result) { panel.classList.add('hidden'); return; }
+
+    panel.classList.remove('hidden');
+    state.archDescCollapsed = false;
+    document.getElementById('archDescBody').classList.remove('collapsed');
+    document.getElementById('archDescToggle').textContent = '\u25BC';
+
+    let html = '';
+
+    if (result.summary) {
+      html += `<p style="margin-bottom:8px;">${escapeHtml(result.summary)}</p>`;
+    }
+    if (result.tech_stack?.length) {
+      html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">`;
+      for (const tech of result.tech_stack) {
+        html += `<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--purple-bg);color:var(--purple);font-weight:500;">${escapeHtml(tech)}</span>`;
+      }
+      html += `</div>`;
+    }
+    if (result.patterns?.length) {
+      html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">`;
+      for (const pat of result.patterns) {
+        html += `<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--info-bg);color:var(--info);font-weight:500;">${escapeHtml(pat)}</span>`;
+      }
+      html += `</div>`;
+    }
+    if (result.components?.length) {
+      html += `<h3>Components (${result.components.length})</h3><ul class="component-list">`;
+      for (const c of result.components) {
+        const typeLabel = c.type ? `<span style="font-size:10px;color:var(--text-dim);font-style:italic;"> [${escapeHtml(c.type)}]</span>` : '';
+        html += `<li><span class="component-name">${escapeHtml(c.name)}</span>${typeLabel}`;
+        if (c.description) html += ` &mdash; ${escapeHtml(c.description)}`;
+        html += `</li>`;
+      }
+      html += `</ul>`;
+    }
+    if (result.relationships?.length) {
+      html += `<h3>Relationships (${result.relationships.length})</h3><ul class="component-list">`;
+      for (const r of result.relationships) {
+        html += `<li><span class="component-name">${escapeHtml(r.from)}</span>`;
+        html += `<span class="relationship-arrow">&rarr;</span>`;
+        html += `<span class="component-name">${escapeHtml(r.to)}</span>`;
+        if (r.description) html += ` &mdash; <span style="color:var(--text-dim);">${escapeHtml(r.description)}</span>`;
+        html += `</li>`;
+      }
+      html += `</ul>`;
+    }
+
+    content.innerHTML = html;
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function clearAnalysis() {
+    state.analysisResult = null;
+    document.getElementById('archDescription').classList.add('hidden');
+    updatePrompt();
+  }
+
+  function toggleArchDesc() {
+    state.archDescCollapsed = !state.archDescCollapsed;
+    document.getElementById('archDescBody').classList.toggle('collapsed', state.archDescCollapsed);
+    document.getElementById('archDescToggle').textContent = state.archDescCollapsed ? '\u25B6' : '\u25BC';
+  }
+
+  // ── Zoom ──
+  function zoom(delta) {
+    state.zoom = Math.max(0.2, Math.min(3, state.zoom + delta));
+    applyZoom();
+  }
+  function zoomFit() {
+    if (!state.imageLoaded) return;
+    const wrapperRect = canvasWrapper.getBoundingClientRect();
+    const imgW = archImage.naturalWidth;
+    const imgH = archImage.naturalHeight;
+    const scaleW = (wrapperRect.width - 40) / imgW;
+    const scaleH = (wrapperRect.height - 40) / imgH;
+    state.zoom = Math.min(scaleW, scaleH, 1);
+    applyZoom();
+  }
+  function applyZoom() {
+    canvasContainer.style.transform = `scale(${state.zoom})`;
+    canvasContainer.style.transformOrigin = 'top left';
+    document.getElementById('zoomLabel').textContent = Math.round(state.zoom * 100) + '%';
+  }
+
+  // ── Tool switching ──
+  function setTool(tool) {
+    state.tool = tool;
+    document.getElementById('drawBtn').classList.toggle('active', tool === 'draw');
+    document.getElementById('selectBtn').classList.toggle('active', tool === 'select');
+    canvasContainer.classList.toggle('panning', tool === 'select');
+    document.getElementById('toolbarHint').textContent =
+      tool === 'draw' ? 'Click and drag to draw a region' : 'Click annotations to select them';
+  }
+
+  // ── Drawing ──
+  let drawing = false;
+  let drawStart = { x: 0, y: 0 };
+
+  function getRelativeCoords(e) {
+    const rect = canvasContainer.getBoundingClientRect();
+    return { x: (e.clientX - rect.left) / state.zoom, y: (e.clientY - rect.top) / state.zoom };
+  }
+
+  canvasContainer.addEventListener('mousedown', e => {
+    if (!state.imageLoaded || e.button !== 0) return;
+    if (state.tool === 'draw') {
+      drawing = true;
+      drawStart = getRelativeCoords(e);
+      drawPreview.style.display = 'block';
+      drawPreview.style.left = drawStart.x + 'px';
+      drawPreview.style.top = drawStart.y + 'px';
+      drawPreview.style.width = '0';
+      drawPreview.style.height = '0';
+      e.preventDefault();
+    }
+  });
+
+  canvasContainer.addEventListener('mousemove', e => {
+    if (!drawing) return;
+    const pos = getRelativeCoords(e);
+    const x = Math.min(drawStart.x, pos.x), y = Math.min(drawStart.y, pos.y);
+    const w = Math.abs(pos.x - drawStart.x), h = Math.abs(pos.y - drawStart.y);
+    drawPreview.style.left = x + 'px';
+    drawPreview.style.top = y + 'px';
+    drawPreview.style.width = w + 'px';
+    drawPreview.style.height = h + 'px';
+  });
+
+  document.addEventListener('mouseup', e => {
+    if (!drawing) return;
+    drawing = false;
+    drawPreview.style.display = 'none';
+
+    const pos = getRelativeCoords(e);
+    const x = Math.min(drawStart.x, pos.x), y = Math.min(drawStart.y, pos.y);
+    const w = Math.abs(pos.x - drawStart.x), h = Math.abs(pos.y - drawStart.y);
+    if (w < 10 || h < 10) return;
+
+    const imgW = archImage.naturalWidth, imgH = archImage.naturalHeight;
+    const annotation = {
+      id: state.nextId++,
+      x: x / imgW, y: y / imgH, w: w / imgW, h: h / imgH,
+      severity: 'warning', comment: '',
+      region: describeRegion(x, y, w, h, imgW, imgH),
+      linkedComponents: []
+    };
+
+    state.annotations.push(annotation);
+    state.selectedId = annotation.id;
+    renderAll();
+
+    requestAnimationFrame(() => {
+      const input = document.querySelector(`.annotation-card[data-id="${annotation.id}"] .comment-input`);
+      if (input) input.focus();
+    });
+  });
+
+  function describeRegion(x, y, w, h, imgW, imgH) {
+    const cx = (x + w / 2) / imgW, cy = (y + h / 2) / imgH;
+    const horizontal = cx < 0.33 ? 'left' : cx > 0.66 ? 'right' : 'center';
+    const vertical = cy < 0.33 ? 'top' : cy > 0.66 ? 'bottom' : 'middle';
+    if (horizontal === 'center' && vertical === 'middle') return 'center of the diagram';
+    if (horizontal === 'center') return `${vertical} area`;
+    if (vertical === 'middle') return `${horizontal} side`;
+    return `${vertical}-${horizontal} area`;
+  }
+
+  // ── Rendering ──
+  function renderAll() {
+    renderOverlay();
+    renderAnnotationCards();
+    updatePrompt();
+    updateBadges();
+  }
+
+  function renderOverlay() {
+    const displayW = archImage.offsetWidth, displayH = archImage.offsetHeight;
+    annotationOverlay.innerHTML = state.annotations.map(a => {
+      const left = a.x * displayW, top = a.y * displayH;
+      const width = a.w * displayW, height = a.h * displayH;
+      const selected = a.id === state.selectedId;
+      const dimmed = state.selectedId && !selected;
+      return `<div class="annotation-rect severity-${a.severity} ${selected ? 'selected' : ''} ${dimmed ? 'dimmed' : ''}"
+                   style="left:${left}px;top:${top}px;width:${width}px;height:${height}px;" data-id="${a.id}">
+                <div class="annotation-label" onclick="selectAnnotation(${a.id})">${a.id}</div>
+              </div>`;
+    }).join('');
+  }
+
+  function renderAnnotationCards() {
+    if (state.annotations.length === 0) {
+      annotationsList.innerHTML = `<div class="empty-state"><div class="empty-state-icon">&#9998;</div>
+        <div class="empty-state-text">${state.imageLoaded ? 'Draw rectangles on the diagram<br>to annotate problem areas.' : 'Load an architecture diagram,<br>then draw rectangles around<br>areas that need feedback.'}</div></div>`;
+      document.getElementById('annotationCount').textContent = '0';
+      return;
+    }
+
+    document.getElementById('annotationCount').textContent = state.annotations.length;
+    const components = state.analysisResult?.components || [];
+
+    annotationsList.innerHTML = state.annotations.map(a => {
+      const selected = a.id === state.selectedId;
+      const sevBtns = Object.entries(SEVERITY_COLORS).map(([key, val]) =>
+        `<button class="sev-btn ${key} ${a.severity === key ? 'active' : ''}" onclick="setSeverity(${a.id},'${key}')">${val.label}</button>`
+      ).join('');
+
+      // Component chip picker (only when analysis exists)
+      let componentPickerHtml = '';
+      if (components.length > 0) {
+        const chips = components.map(c => {
+          const linked = a.linkedComponents.includes(c.name);
+          const escapedName = escapeHtml(c.name).replace(/'/g, '&#39;');
+          return `<button class="component-chip ${linked ? 'linked' : ''}" onclick="toggleComponent(${a.id},'${escapedName}')" title="${escapeHtml(c.description || c.type || '')}">${escapeHtml(c.name)}</button>`;
+        }).join('');
+        componentPickerHtml = `<div class="component-picker">
+          <div class="component-picker-label">Linked components</div>
+          <div class="component-chips">${chips}</div>
+        </div>`;
+      }
+
+      // Card title: show linked components or fallback to region/comment
+      const linkedLabel = a.linkedComponents.length > 0
+        ? a.linkedComponents.join(', ')
+        : null;
+      const titleText = a.comment
+        ? escapeHtml(a.comment)
+        : (linkedLabel ? linkedLabel + ' — ' + a.region : 'No comment yet — ' + a.region);
+      const titleHasContent = !!(a.comment || linkedLabel);
+
+      return `<div class="annotation-card ${selected ? 'selected' : ''}" data-id="${a.id}">
+        <div class="card-header" onclick="selectAnnotation(${a.id})">
+          <div class="card-number ${a.severity}">${a.id}</div>
+          <div class="card-title ${titleHasContent ? 'has-comment' : ''}">${titleText}</div>
+          <button class="card-delete" onclick="event.stopPropagation();deleteAnnotation(${a.id})" title="Remove">&#10005;</button>
+        </div>
+        <div class="card-body" ${!selected ? 'style="display:none"' : ''}>
+          <div class="severity-select">${sevBtns}</div>
+          ${componentPickerHtml}
+          <textarea class="comment-input" placeholder="Describe the issue with this area..."
+                    oninput="updateComment(${a.id}, this.value)">${a.comment}</textarea>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function updateBadges() {
+    const counts = { critical: 0, warning: 0, info: 0, suggestion: 0 };
+    state.annotations.forEach(a => counts[a.severity]++);
+    document.getElementById('headerBadges').innerHTML = Object.entries(counts)
+      .filter(([_, c]) => c > 0)
+      .map(([sev, c]) => `<span class="badge badge-${sev}">${c} ${SEVERITY_COLORS[sev].label}</span>`)
+      .join('');
+  }
+
+  // ── Interactions ──
+  function selectAnnotation(id) {
+    state.selectedId = state.selectedId === id ? null : id;
+    renderAll();
+    const card = document.querySelector(`.annotation-card[data-id="${id}"]`);
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function setSeverity(id, severity) {
+    const a = state.annotations.find(a => a.id === id);
+    if (a) { a.severity = severity; renderAll(); }
+  }
+
+  function toggleComponent(annotationId, componentName) {
+    // Decode HTML entities back to plain text
+    const tmp = document.createElement('span');
+    tmp.innerHTML = componentName;
+    const name = tmp.textContent;
+
+    const a = state.annotations.find(a => a.id === annotationId);
+    if (!a) return;
+    const idx = a.linkedComponents.indexOf(name);
+    if (idx >= 0) {
+      a.linkedComponents.splice(idx, 1);
+    } else {
+      a.linkedComponents.push(name);
+    }
+    renderAll();
+  }
+
+  function updateComment(id, comment) {
+    const a = state.annotations.find(a => a.id === id);
+    if (a) {
+      a.comment = comment;
+      const card = document.querySelector(`.annotation-card[data-id="${id}"] .card-title`);
+      if (card) {
+        card.textContent = comment || 'No comment yet — ' + a.region;
+        card.classList.toggle('has-comment', !!comment);
+      }
+      updatePrompt();
+    }
+  }
+
+  function deleteAnnotation(id) {
+    state.annotations = state.annotations.filter(a => a.id !== id);
+    if (state.selectedId === id) state.selectedId = null;
+    renderAll();
+  }
+
+  function undoLast() {
+    if (state.annotations.length === 0) return;
+    const removed = state.annotations.pop();
+    if (state.selectedId === removed.id) state.selectedId = null;
+    renderAll();
+  }
+
+  function clearAll() {
+    state.annotations = [];
+    state.selectedId = null;
+    state.nextId = 1;
+    state.analysisResult = null;
+    document.getElementById('archDescription').classList.add('hidden');
+    renderAll();
+  }
+
+  function togglePrompt() {
+    state.promptCollapsed = !state.promptCollapsed;
+    document.getElementById('promptContent').classList.toggle('collapsed', state.promptCollapsed);
+    document.getElementById('promptToggle').textContent = state.promptCollapsed ? '\u25B6' : '\u25BC';
+  }
+
+  // ── Prompt generation ──
+  function updatePrompt() {
+    const total = state.annotations.length;
+    const hasAnalysis = !!state.analysisResult;
+
+    document.getElementById('promptAnnotationCount').textContent =
+      `${total} annotation${total !== 1 ? 's' : ''}${hasAnalysis ? ' + AI analysis' : ''}`;
+
+    if (total === 0 && !hasAnalysis) {
+      promptText.textContent = 'Upload a diagram and add annotations to generate a review prompt.';
+      return;
+    }
+
+    const systemName = document.getElementById('systemName').value.trim();
+    const extraContext = document.getElementById('extraContext').value.trim();
+    let prompt = '';
+
+    if (hasAnalysis) {
+      const r = state.analysisResult;
+      prompt += `I have a solution architecture${systemName ? ` for "${systemName}"` : ''} that I need help improving.\n\n`;
+      prompt += `## Current Architecture Description\n\n`;
+      if (r.summary) prompt += `${r.summary}\n\n`;
+      if (r.tech_stack?.length) prompt += `**Tech Stack:** ${r.tech_stack.join(', ')}\n`;
+      if (r.patterns?.length) prompt += `**Architectural Patterns:** ${r.patterns.join(', ')}\n`;
+      prompt += '\n';
+      if (r.components?.length) {
+        prompt += `**Components:**\n`;
+        for (const c of r.components) {
+          prompt += `- **${c.name}**`;
+          if (c.type) prompt += ` [${c.type}]`;
+          if (c.description) prompt += ` — ${c.description}`;
+          prompt += '\n';
+        }
+        prompt += '\n';
+      }
+      if (r.relationships?.length) {
+        prompt += `**Data Flow & Relationships:**\n`;
+        for (const rel of r.relationships) {
+          prompt += `- ${rel.from} -> ${rel.to}`;
+          if (rel.description) prompt += ` (${rel.description})`;
+          prompt += '\n';
+        }
+        prompt += '\n';
+      }
+    } else {
+      prompt += 'I\'ve reviewed ';
+      prompt += systemName ? `the solution architecture for "${systemName}"` : 'a solution architecture diagram';
+      prompt += ' and identified the following issues and feedback.\n\n';
+    }
+
+    if (extraContext) prompt += `**Additional Context:** ${extraContext}\n\n`;
+
+    if (total > 0) {
+      prompt += `## Identified Issues & Feedback\n\n`;
+      const groups = {
+        critical: state.annotations.filter(a => a.severity === 'critical'),
+        warning: state.annotations.filter(a => a.severity === 'warning'),
+        info: state.annotations.filter(a => a.severity === 'info'),
+        suggestion: state.annotations.filter(a => a.severity === 'suggestion')
+      };
+      const groupLabels = { critical: 'Critical Issues', warning: 'Warnings', info: 'Observations', suggestion: 'Suggestions' };
+      for (const [sev, items] of Object.entries(groups)) {
+        if (items.length === 0) continue;
+        prompt += `### ${groupLabels[sev]}\n\n`;
+        for (const a of items) {
+          // Reference linked components by name, fall back to region description
+          if (a.linkedComponents.length > 0) {
+            const names = a.linkedComponents.map(n => `**${n}**`).join(', ');
+            prompt += `${a.id}. ${names} (${a.region})`;
+          } else {
+            prompt += `${a.id}. **Region: ${a.region}**`;
+          }
+          prompt += a.comment.trim() ? ` — ${a.comment.trim()}` : ` — (no comment provided)`;
+          prompt += '\n';
+        }
+        prompt += '\n';
+      }
+    }
+
+    prompt += '---\n\n';
+    prompt += 'Based on ';
+    if (hasAnalysis && total > 0) prompt += 'the architecture description above and my identified issues, ';
+    else if (hasAnalysis) prompt += 'the architecture description above, ';
+    else prompt += 'these findings, ';
+    prompt += 'please provide:\n';
+    prompt += '1. A revised architecture design that addresses all critical issues and warnings\n';
+    prompt += '2. For each issue, explain what was wrong and how your redesign fixes it\n';
+    prompt += '3. Any additional best-practice improvements you\'d recommend\n';
+    prompt += '4. A text-based architecture diagram (ASCII or Mermaid) showing the improved design';
+
+    promptText.textContent = prompt;
+  }
+
+  function copyPrompt() {
+    navigator.clipboard.writeText(promptText.textContent).then(() => {
+      const btn = document.getElementById('copyBtn');
+      btn.classList.add('copied');
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Prompt';
+      }, 2000);
+    });
+  }
+
+  window.addEventListener('resize', () => { if (state.imageLoaded) { zoomFit(); renderOverlay(); } });
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'd') setTool('draw');
+    if (e.key === 's') setTool('select');
+    if (e.key === 'z' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); undoLast(); }
+    if (e.key === 'Delete' || e.key === 'Backspace') { if (state.selectedId) deleteAnnotation(state.selectedId); }
+    if (e.key === 'Escape') {
+      if (!document.getElementById('apiKeyModal').classList.contains('hidden')) hideApiKeyModal();
+      else { state.selectedId = null; renderAll(); }
+    }
+  });
+
+  // Init
+  updateApiKeyUI();
+  renderAll();
+</script>
+</body>
+</html>
