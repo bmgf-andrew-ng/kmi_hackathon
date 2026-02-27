@@ -6,6 +6,15 @@
       "env": {
         "GITHUB_TOKEN": "${GITHUB_TOKEN}"
       }
+    },
+    "ado-mcp": {
+      "command": "docker",
+      "args": ["compose", "run", "--rm", "-T", "ado-mcp-stdio"],
+      "env": {
+        "ADO_ORG_URL": "${ADO_ORG_URL}",
+        "ADO_PAT": "${ADO_PAT}",
+        "ADO_PROJECT": "${ADO_PROJECT}"
+      }
     }
   }
 }

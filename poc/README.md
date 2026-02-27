@@ -1,0 +1,149 @@
+# PoC: Claude Plugin for Accelerating Development
+
+Proof-of-concept validating the end-to-end pattern: **skill → sub-agent → MCP server → data store → synthesised results**.
+
+A three-store RAG architecture where Claude accesses Neo4j (graph), OpenSearch (text), and Azurite (images) through MCP servers, orchestrated by Claude Code skills and sub-agents.
+
+---
+
+## Project Structure
+
+### Under `poc/` — Infrastructure, Data & Application Code
+
+```
+poc/
+├── plan.md                                  # Implementation plan & ADO board reference
+├── create-ado-board.py                      # Azure DevOps work item generator
+├── README.md                                # ← You are here
+│
+├── docker-compose.yml                       # Infrastructure: Neo4j, OpenSearch, Azurite
+├── .env.example                             # Template for connection strings
+├── .env                                     # Local connection strings (gitignored)
+│
+├── seed/                                    # Data Layer — seed scripts & data
+│   ├── seed-all.sh                          # One-command runner for all stores
+│   ├── neo4j/
+│   │   ├── seed.cypher                      # Knowledge graph: Documents, Themes,
+│   │   │                                    #   Indicators, Countries, FundingAreas
+│   │   └── seed.sh                          # Runs cypher-shell against Neo4j container
+│   ├── opensearch/
+│   │   ├── create-index.sh                  # Index mapping for strategy-chunks
+│   │   ├── chunks.ndjson                    # 10-20 representative document chunks
+│   │   └── seed.sh                          # Bulk-indexes chunks into OpenSearch
+│   └── azurite/
+│       └── (sample page images)             # Page images for blob storage
+│
+├── mcp-servers/                             # MCP Server Layer — custom servers
+│   └── strategy-review/
+│       ├── pyproject.toml                   # Python deps: mcp[cli], opensearch-py,
+│       │                                    #   azure-storage-blob
+│       └── strategy_review_mcp/
+│           ├── __init__.py
+│           └── server.py                    # FastMCP server exposing:
+│                                            #   search_documents(query, top_k)
+│                                            #   search_chunks(query, doc_id, top_k)
+│                                            #   get_page_image(doc_id, page_num)
+│
+└── .devcontainer/                           # Developer Experience Layer
+    ├── devcontainer.json                    # Python 3.12, Node 22, port forwarding
+    └── docker-compose.devcontainer.yml      # Workspace container linked to data tier
+```
+
+### At Repo Root — Claude Code Conventions
+
+These files must live at the repo root per Claude Code's conventions:
+
+```
+.claude/
+├── agents/                                  # Agent Layer — sub-agent definitions
+│   ├── explorer.md                          # (existing) Read-only codebase explorer
+│   ├── architect-reviewer.md                # (existing) Solution architecture reviewer
+│   ├── graph-traversal.md                   # Neo4j Cypher specialist (Sonnet)
+│   ├── document-search.md                   # Text search specialist (Sonnet)
+│   └── image-retrieval.md                   # Blob retrieval specialist (Sonnet)
+├── skills/                                  # Skill Layer — user-facing slash commands
+│   ├── greet/SKILL.md                       # (existing) Example greeting skill
+│   ├── review-architecture/SKILL.md         # (existing) Architecture review skill
+│   ├── strategy-review/SKILL.md             # /strategy-review — graph + text queries
+│   ├── gender-tech-review/SKILL.md          # /gender-tech-review — gender equality focus
+│   └── budget-review/SKILL.md               # /budget-review — funding & allocation focus
+└── settings.local.json                      # (existing, gitignored) Hooks & tokens
+
+.mcp.json                                   # MCP server registry
+                                             #   github (existing)
+                                             #   ado-mcp (existing)
+                                             #   neo4j (to add — uvx mcp-neo4j-cypher)
+                                             #   strategy-review (to add — uv run)
+```
+
+---
+
+## Layer Descriptions
+
+| Layer | Location | Purpose | Delivered By |
+|-------|----------|---------|-------------|
+| **Infrastructure** | `poc/docker-compose.yml`, `poc/.env` | Neo4j 5.26, OpenSearch 2.17, Azurite 3.33 containers | Epic 1: Data Tier Infrastructure |
+| **Data/Seed** | `poc/seed/` | Knowledge graph data, document chunks, page images | Epic 1: Data Tier Infrastructure |
+| **MCP Servers** | `poc/mcp-servers/`, `.mcp.json` | Custom FastMCP server + Neo4j MCP config | Epic 2: MCP Server Integration |
+| **Agents** | `.claude/agents/` | Graph-traversal, document-search, image-retrieval sub-agents | Epic 3: Sub-Agents & Strategy Review Skill |
+| **Skills** | `.claude/skills/` | Strategy, gender-tech, budget review slash commands | Epic 3 + Epic 5 |
+| **DevContainer** | `poc/.devcontainer/` | VS Code dev container with all services | Epic 4: Developer Experience |
+
+---
+
+## Component Location Rationale
+
+**Why `poc/` for infrastructure and application code?**
+- Isolates the PoC from the learning playground (concept maps, architecture reviews)
+- Self-contained: `docker compose up` from `poc/` starts the full data tier
+- Reproducible: seed scripts reset data stores to a known state
+- Portable: the entire `poc/` folder can be extracted into a standalone repo
+
+**Why repo root for `.claude/` and `.mcp.json`?**
+- Claude Code discovers agents from `.claude/agents/*.md` relative to the repo root
+- Claude Code discovers skills from `.claude/skills/*/SKILL.md` relative to the repo root
+- MCP server registry (`.mcp.json`) must be at the repo root for Claude Code to load it
+- These are Claude Code runtime conventions — moving them under `poc/` would break discovery
+
+### Component → Location Mapping
+
+| Component | Location | Constraint | Rationale |
+|-----------|----------|-----------|-----------|
+| Docker Compose | `poc/docker-compose.yml` | — | Isolates PoC infrastructure from repo root |
+| Environment config | `poc/.env` / `poc/.env.example` | — | Scoped to PoC data tier; `.env` gitignored |
+| Neo4j seed data | `poc/seed/neo4j/` | — | Co-located with the infrastructure it seeds |
+| OpenSearch seed data | `poc/seed/opensearch/` | — | Co-located with the infrastructure it seeds |
+| Azurite seed data | `poc/seed/azurite/` | — | Co-located with the infrastructure it seeds |
+| Unified seed runner | `poc/seed/seed-all.sh` | — | Orchestrates all seed scripts in one command |
+| Strategy Review MCP server | `poc/mcp-servers/strategy-review/` | — | Python application code; isolated package with `pyproject.toml` |
+| DevContainer config | `poc/.devcontainer/` | — | Binds to `poc/docker-compose.yml` services |
+| MCP server registry | `.mcp.json` (repo root) | **Claude Code convention** | Claude Code loads `.mcp.json` from repo root only; cannot be nested |
+| graph-traversal agent | `.claude/agents/graph-traversal.md` (repo root) | **Claude Code convention** | Agent discovery requires `.claude/agents/` at repo root |
+| document-search agent | `.claude/agents/document-search.md` (repo root) | **Claude Code convention** | Agent discovery requires `.claude/agents/` at repo root |
+| image-retrieval agent | `.claude/agents/image-retrieval.md` (repo root) | **Claude Code convention** | Agent discovery requires `.claude/agents/` at repo root |
+| strategy-review skill | `.claude/skills/strategy-review/SKILL.md` (repo root) | **Claude Code convention** | Skill discovery requires `.claude/skills/` at repo root |
+| gender-tech-review skill | `.claude/skills/gender-tech-review/SKILL.md` (repo root) | **Claude Code convention** | Skill discovery requires `.claude/skills/` at repo root |
+| budget-review skill | `.claude/skills/budget-review/SKILL.md` (repo root) | **Claude Code convention** | Skill discovery requires `.claude/skills/` at repo root |
+| Claude settings | `.claude/settings.local.json` (repo root) | **Claude Code convention** | Hooks and tokens; gitignored |
+
+---
+
+## Quick Start
+
+> Placeholder — will be functional after Epic 1 (Data Tier) is complete.
+
+```bash
+# 1. Start data stores
+cd poc && docker compose up -d
+
+# 2. Seed all stores
+./seed/seed-all.sh
+
+# 3. Verify
+docker compose ps                              # All healthy
+curl "http://localhost:9200/strategy-chunks/_search?q=maternal+health"  # OpenSearch
+open http://localhost:7474                      # Neo4j browser
+
+# 4. Use the skill
+# /strategy-review What themes does the Global Health Strategy cover?
+```
