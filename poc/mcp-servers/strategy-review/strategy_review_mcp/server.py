@@ -13,6 +13,7 @@ import logging
 import os
 from typing import Any
 
+from azure.core.credentials import AzureNamedKeyCredential
 from azure.storage.blob import BlobServiceClient
 from mcp.server.fastmcp import FastMCP
 from opensearchpy import OpenSearch
@@ -26,11 +27,14 @@ OPENSEARCH_USER = os.environ.get("OPENSEARCH_USER", "admin")
 OPENSEARCH_PASSWORD = os.environ.get("OPENSEARCH_PASSWORD", "admin")
 OPENSEARCH_INDEX = os.environ.get("OPENSEARCH_INDEX", "strategy-chunks")
 
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get(
-    "AZURE_STORAGE_CONNECTION_STRING",
-    "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
-    "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/"
-    "K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1",
+# Azurite well-known dev credentials (constant — only endpoint varies by environment)
+_AZURITE_ACCOUNT_NAME = "devstoreaccount1"
+_AZURITE_ACCOUNT_KEY = (
+    "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/"
+    "K1SZFPTOtr/KBHBeksoGMGw=="
+)
+AZURE_BLOB_ENDPOINT = os.environ.get(
+    "AZURE_STORAGE_BLOB_ENDPOINT", "http://127.0.0.1:10000/devstoreaccount1"
 )
 AZURE_STORAGE_CONTAINER = os.environ.get("AZURE_STORAGE_CONTAINER", "strategy-pages")
 
@@ -76,8 +80,12 @@ def _get_blob_service_client() -> BlobServiceClient:
     """Return a singleton BlobServiceClient, creating it on first call."""
     global _blob_service_client
     if _blob_service_client is None:
-        _blob_service_client = BlobServiceClient.from_connection_string(
-            AZURE_STORAGE_CONNECTION_STRING
+        _blob_service_client = BlobServiceClient(
+            account_url=AZURE_BLOB_ENDPOINT,
+            credential=AzureNamedKeyCredential(
+                name=_AZURITE_ACCOUNT_NAME,
+                key=_AZURITE_ACCOUNT_KEY,
+            ),
         )
     return _blob_service_client
 

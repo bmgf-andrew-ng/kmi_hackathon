@@ -34,7 +34,7 @@ services:
     image: mcr.microsoft.com/azure-storage/azurite:3.33.0
     ports:
       - "10000:10000"
-    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --skipApiVersionCheck
     volumes:
       - azurite-data:/data
     healthcheck:

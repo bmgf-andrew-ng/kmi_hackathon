@@ -31,7 +31,11 @@ poc/
 │   │   ├── chunks.ndjson                    # 10-20 representative document chunks
 │   │   └── seed.sh                          # Bulk-indexes chunks into OpenSearch
 │   └── azurite/
-│       └── (sample page images)             # Page images for blob storage
+│       ├── seed.sh                          # Uploads page images to Azurite
+│       ├── seed.py                          # Python upload script (azure-storage-blob)
+│       ├── GH_2024/page_001.png … page_005.png
+│       ├── TB_2025/page_001.png … page_003.png
+│       └── GE_2023/page_001.png … page_004.png
 │
 ├── mcp-servers/                             # MCP Server Layer — custom servers
 │   └── strategy-review/
@@ -70,20 +74,19 @@ These files must live at the repo root per Claude Code's conventions:
 │   ├── architect-reviewer.md                # (existing) Solution architecture reviewer
 │   ├── graph-traversal.md                   # Neo4j Cypher specialist (Sonnet)
 │   ├── document-search.md                   # Text search specialist (Sonnet)
-│   └── image-retrieval.md                   # Blob retrieval specialist (Sonnet)
+│   └── image-retrieval.md                   # Blob retrieval specialist (Haiku)
 ├── skills/                                  # Skill Layer — user-facing slash commands
 │   ├── greet/SKILL.md                       # (existing) Example greeting skill
 │   ├── review-architecture/SKILL.md         # (existing) Architecture review skill
 │   ├── strategy-review/SKILL.md             # /strategy-review — graph + text queries
 │   ├── gender-tech-review/SKILL.md          # /gender-tech-review — gender equality focus
 │   └── budget-review/SKILL.md               # /budget-review — funding & allocation focus
-└── settings.local.json                      # (existing, gitignored) Hooks & tokens
+└── settings.local.json                      # (gitignored) Hooks, tokens & MCP env vars
 
 .mcp.json                                   # MCP server registry
-                                             #   github (existing)
-                                             #   ado-mcp (existing)
-                                             #   neo4j (to add — uvx mcp-neo4j-cypher)
-                                             #   strategy-review (to add — uv run)
+                                             #   ado-mcp (docker exec → running container)
+                                             #   neo4j (uvx mcp-neo4j-cypher)
+                                             #   strategy-review (uv run)
 ```
 
 ---
@@ -171,23 +174,15 @@ docker compose ps
 
 All three (neo4j, opensearch, azurite) should show `healthy` — takes ~30–60s on first boot.
 
-**4. Export env vars for Claude Code**
-
-Since `.mcp.json` uses `${VAR}` references, export the variables in your shell:
-
-```bash
-cd /path/to/gf-hackathon
-set -a; source poc/.env.docker; set +a
-```
-
-**5. Seed the data stores**
+**4. Seed the data stores**
 
 ```bash
 bash poc/seed/neo4j/seed.sh
 bash poc/seed/opensearch/seed.sh
+bash poc/seed/azurite/seed.sh
 ```
 
-**6. Verify services**
+**5. Verify services**
 
 ```bash
 # Neo4j — should return a node count
@@ -202,13 +197,33 @@ curl -s http://localhost:9200/_cluster/health | python3 -m json.tool
 nc -z localhost 10000 && echo "Azurite is up"
 ```
 
-**7. Launch Claude Code**
+**6. Configure Claude Code env vars**
+
+MCP env vars are read from `.claude/settings.local.json` (gitignored). Create it with:
 
 ```bash
-claude
+cat > .claude/settings.local.json << 'EOF'
+{
+  "env": {
+    "NEO4J_URI": "bolt://localhost:7687",
+    "NEO4J_USER": "neo4j",
+    "NEO4J_PASSWORD": "password",
+    "OPENSEARCH_URL": "http://localhost:9200",
+    "OPENSEARCH_USER": "admin",
+    "OPENSEARCH_PASSWORD": "admin",
+    "AZURE_STORAGE_BLOB_ENDPOINT": "http://127.0.0.1:10000/devstoreaccount1",
+    "AZURE_STORAGE_CONTAINER": "strategy-pages"
+  }
+}
+EOF
 ```
 
-Then type `/mcp` to verify neo4j and strategy-review tools are visible.
+> **Note:** Azurite account name and key are well-known constants hardcoded in the
+> MCP server — only the blob endpoint needs configuring.
+
+**7. Launch Claude Code**
+
+Open VS Code and the MCP servers will connect automatically using the env vars from `settings.local.json`. Type `/mcp` to verify neo4j and strategy-review tools are visible.
 
 **8. Tear down**
 
@@ -302,15 +317,21 @@ If both return JSON with a `tools` array, the MCP servers are working.
 
 ### Environment Variables Reference
 
-| Variable | Local (`.env.docker`) | DevContainer (`containerEnv`) | Used By |
+MCP env vars are set in `.claude/settings.local.json` (local) or `containerEnv` (DevContainer).
+
+| Variable | Local | DevContainer | Used By |
 |---|---|---|---|
 | `NEO4J_URI` | `bolt://localhost:7687` | `bolt://neo4j:7687` | `.mcp.json` → neo4j MCP |
-| `NEO4J_USER` | `neo4j` | `neo4j` | docker-compose, `.mcp.json`, seed scripts |
-| `NEO4J_PASSWORD` | `password` | `password` | docker-compose, `.mcp.json`, seed scripts |
+| `NEO4J_USER` | `neo4j` | `neo4j` | docker-compose, `.mcp.json` |
+| `NEO4J_PASSWORD` | `password` | `password` | docker-compose, `.mcp.json` |
 | `OPENSEARCH_URL` | `http://localhost:9200` | `http://opensearch:9200` | `.mcp.json` → strategy-review MCP |
 | `OPENSEARCH_USER` | `admin` | `admin` | `.mcp.json` → strategy-review MCP |
-| `OPENSEARCH_PASSWORD` | `admin` | `admin` | docker-compose, `.mcp.json` |
-| `AZURE_STORAGE_CONNECTION_STRING` | `...BlobEndpoint=http://127.0.0.1:10000/...` | `...BlobEndpoint=http://azurite:10000/...` | `.mcp.json` → strategy-review MCP |
-| `AZURE_STORAGE_CONTAINER` | `strategy-pages` | `strategy-pages` | `.mcp.json` → strategy-review MCP |
+| `OPENSEARCH_PASSWORD` | `admin` | `admin` | `.mcp.json` → strategy-review MCP |
+| `AZURE_STORAGE_BLOB_ENDPOINT` | `http://127.0.0.1:10000/devstoreaccount1` | `http://azurite:10000/devstoreaccount1` | strategy-review MCP (server default) |
+| `AZURE_STORAGE_CONTAINER` | `strategy-pages` | `strategy-pages` | strategy-review MCP (server default) |
+
+> **Note:** Azurite account name and key are well-known constants baked into
+> every Azurite instance. They are hardcoded in the MCP server — not configurable
+> via env vars. Only the blob endpoint differs between local and DevContainer.
 
 The only difference between the two modes is the hostname — `localhost`/`127.0.0.1` for local dev vs Docker service names (`neo4j`, `opensearch`, `azurite`) for DevContainer.

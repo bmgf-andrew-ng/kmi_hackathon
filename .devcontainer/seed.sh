@@ -89,5 +89,17 @@ curl -sf -X POST "http://opensearch:9200/_bulk" \
 echo ""
 echo "OpenSearch seeded successfully."
 
+# ---------------------------------------------------------------
+# 3. Azurite — upload page images to blob storage
+# ---------------------------------------------------------------
+echo ""
+echo "Seeding Azurite blob storage with page images..."
+
+AZURE_STORAGE_BLOB_ENDPOINT="${AZURE_STORAGE_BLOB_ENDPOINT:-http://azurite:10000/devstoreaccount1}" \
+AZURE_STORAGE_CONTAINER="${AZURE_STORAGE_CONTAINER:-strategy-pages}" \
+  python3 "$SEED_DIR/azurite/seed.py"
+
+echo "Azurite seeded successfully."
+
 echo ""
 echo "=== All data stores seeded ==="

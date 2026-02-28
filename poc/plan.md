@@ -197,7 +197,11 @@ poc/
 │   │   ├── chunks.ndjson                  # Document chunk data
 │   │   └── seed.sh                        # OpenSearch seed runner
 │   └── azurite/
-│       └── (sample page images)           # Blob storage seed data
+│       ├── seed.sh                        # Azurite seed runner (bash)
+│       ├── seed.py                        # Python upload script (azure-storage-blob)
+│       ├── GH_2024/page_001.png … page_005.png
+│       ├── TB_2025/page_001.png … page_003.png
+│       └── GE_2023/page_001.png … page_004.png
 │
 ├── mcp-servers/                           # MCP Server Layer
 │   └── strategy-review/
@@ -356,7 +360,11 @@ poc/
 | 40 | Create `.claude/agents/image-retrieval.md` using `get_page_image` tool | Agent can retrieve and return page images |
 | 41 | Seed Azurite with sample page images in `seed/azurite/` | Images accessible via blob storage |
 
-> **Note from Story 58 (Strategy Review MCP verification):** The `azure-storage-blob` 12.28.0 SDK uses API version `2026-02-06` which Azurite 3.33.0 does not support. When implementing this story, add `--skipApiVersionCheck` to the Azurite command in `poc/docker-compose.yml` (e.g. `azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --skipApiVersionCheck`). The `get_page_image` MCP tool in `poc/mcp-servers/strategy-review/strategy_review_mcp/server.py` expects blobs named `{doc_id}/page_{page_num:03d}.png` inside container `strategy-pages`.
+> **Implementation notes (completed):**
+> - `--skipApiVersionCheck` added to the Azurite command in `poc/docker-compose.yml` to handle `azure-storage-blob` 12.28.0 API version `2026-02-06` that Azurite 3.33.0 does not natively support.
+> - Azurite well-known dev credentials (account name `devstoreaccount1` and key) are hardcoded in `server.py` — only `AZURE_STORAGE_BLOB_ENDPOINT` and `AZURE_STORAGE_CONTAINER` are configurable via env vars (with sensible defaults). This avoids env var substitution issues with special characters in the base64 key.
+> - Seed data: 12 placeholder PNG images across 3 docs (`GH_2024/`, `TB_2025/`, `GE_2023/`), uploaded by `poc/seed/azurite/seed.py` using the Azure SDK.
+> - The `get_page_image` MCP tool expects blobs named `{doc_id}/page_{page_num:03d}.png` inside container `strategy-pages`.
 
 #### Feature 5.2: Gender Tech Review Skill
 
