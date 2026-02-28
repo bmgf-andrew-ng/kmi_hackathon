@@ -1,18 +1,32 @@
 """Seed Azurite blob storage with sample page images."""
 
 import os
-import sys
 from pathlib import Path
 
+from azure.core.credentials import AzureNamedKeyCredential
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
-CONN_STR = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
+# Azurite well-known dev credentials (same constants as in the MCP server)
+_AZURITE_ACCOUNT_NAME = "devstoreaccount1"
+_AZURITE_ACCOUNT_KEY = (
+    "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/"
+    "K1SZFPTOtr/KBHBeksoGMGw=="
+)
+BLOB_ENDPOINT = os.environ.get(
+    "AZURE_STORAGE_BLOB_ENDPOINT", "http://127.0.0.1:10000/devstoreaccount1"
+)
 CONTAINER = os.environ.get("AZURE_STORAGE_CONTAINER", "strategy-pages")
 SEED_DIR = Path(__file__).parent
 
 
 def main() -> None:
-    client = BlobServiceClient.from_connection_string(CONN_STR)
+    client = BlobServiceClient(
+        account_url=BLOB_ENDPOINT,
+        credential=AzureNamedKeyCredential(
+            name=_AZURITE_ACCOUNT_NAME,
+            key=_AZURITE_ACCOUNT_KEY,
+        ),
+    )
 
     # Create container (ignore if exists)
     try:

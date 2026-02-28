@@ -177,6 +177,12 @@ All three (neo4j, opensearch, azurite) should show `healthy` — takes ~30–60s
 **4. Seed the data stores**
 
 ```bash
+bash poc/seed/seed-all.sh        # seeds Neo4j, OpenSearch, and Azurite in one command
+```
+
+Or seed individually:
+
+```bash
 bash poc/seed/neo4j/seed.sh
 bash poc/seed/opensearch/seed.sh
 bash poc/seed/azurite/seed.sh
@@ -335,3 +341,109 @@ MCP env vars are set in `.claude/settings.local.json` (local) or `containerEnv` 
 > via env vars. Only the blob endpoint differs between local and DevContainer.
 
 The only difference between the two modes is the hostname — `localhost`/`127.0.0.1` for local dev vs Docker service names (`neo4j`, `opensearch`, `azurite`) for DevContainer.
+
+---
+
+## Using the Skills
+
+Once the stack is running and MCP servers are connected, three slash commands are available in Claude Code. Each follows the same pattern: **classify the question → dispatch to graph/text/both agents → synthesise results with citations**.
+
+### `/strategy-review` — General Strategy Analysis
+
+Broad queries across all strategy documents, themes, indicators, countries, and funding areas.
+
+**Try these:**
+
+```
+/strategy-review What themes does the Global Health Strategy 2024-2028 cover?
+```
+
+> Returns all 7 themes (Maternal & Newborn Health, HIV/AIDS, Malaria, TB, Vaccine Delivery, Digital Health, Gender Equality) with coverage weights from the knowledge graph.
+
+```
+/strategy-review Which countries prioritise maternal health and what interventions are recommended?
+```
+
+> Dispatches to **both** agents — graph returns priority countries (Nigeria rank 1, India rank 1, Ethiopia rank 2, DR Congo rank 2) while text search returns intervention details from the document corpus. Results are woven together with citations.
+
+```
+/strategy-review What does the Global Health Strategy say about malaria prevention?
+```
+
+> Dispatches to **text** agent — searches GH_2024 chunks for malaria prevention content, returns summaries with section and page citations.
+
+---
+
+### `/gender-tech-review` — Gender Equality & Women's Health
+
+Focused on the Gender Equality theme, the Gender & Health Equity Framework (GE_2023), GDI/MMR/NMR indicators, and GPE funding.
+
+**Try these:**
+
+```
+/gender-tech-review What is the Gender Development Index target and current baseline?
+```
+
+> Dispatches to **graph** agent — returns GDI baseline 0.82, target 1.0 by 2028, linked to the Gender Equality & Women's Health theme.
+
+```
+/gender-tech-review What does the Gender & Health Equity Framework recommend for reducing maternal mortality?
+```
+
+> Dispatches to **text** agent — searches GE_2023 chunks for maternal mortality recommendations, returns policy details with quotes and page citations.
+
+```
+/gender-tech-review How is gender equity funding allocated and what programmes does it support?
+```
+
+> Dispatches to **both** agents — graph returns GPE allocations ($30M/60% to Gender, $20M/40% to MNH) while text returns programme descriptions from GE_2023. Synthesised into a table with contextual detail.
+
+---
+
+### `/budget-review` — Funding & Budget Analysis
+
+Focused on FundingArea nodes, ALLOCATES_TO relationships, and financial planning across all strategy documents.
+
+**Try these:**
+
+```
+/budget-review How is disease prevention funding allocated across themes?
+```
+
+> Dispatches to **graph** agent — returns PREV allocations: $90M (45%) to Malaria, $60M (30%) to TB, $50M (25%) to Vaccines. Presented as a financial summary table with totals.
+
+```
+/budget-review What is the total budget across all funding areas?
+```
+
+> Dispatches to **graph** agent — aggregates all 5 funding areas: HSS $150M, PREV $200M, DIGI $75M, CAPACITY $60M, GPE $50M = **$535M total**.
+
+```
+/budget-review What is the rationale behind the digital health investment?
+```
+
+> Dispatches to **text** agent — searches for digital health funding rationale across strategy documents, returns justification passages with citations.
+
+---
+
+### How It Works (End-to-End Flow)
+
+```
+User types: /strategy-review What funding is allocated to TB elimination?
+
+  1. Skill classifies → Graph (funding query)
+  2. Skill dispatches → graph-traversal agent
+  3. Agent queries   → Neo4j MCP (mcp__neo4j__read_neo4j_cypher)
+  4. Neo4j returns   → FundingArea(PREV)-[:ALLOCATES_TO {$60M, 30%}]->Theme(TB)
+  5. Skill synthesises → Formatted answer with citations and follow-up questions
+```
+
+### Data Behind the Skills
+
+The three data stores contain:
+
+| Store | Content | Size |
+|-------|---------|------|
+| **Neo4j** | Knowledge graph: 3 Documents, 7 Themes, 10 Indicators, 8 Countries, 5 Funding Areas + relationships | ~50 nodes, ~40 relationships |
+| **OpenSearch** | Document chunks: strategy text passages with metadata (section, page, themes, countries) | 10-20 chunks |
+| **Azurite** | Page images: placeholder PNGs for document pages | 12 images across 3 docs |
