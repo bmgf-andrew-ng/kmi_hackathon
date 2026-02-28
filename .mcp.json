@@ -25,6 +25,22 @@
         "NEO4J_PASSWORD": "password",
         "NEO4J_DATABASE": "neo4j"
       }
+    },
+    "strategy-review": {
+      "command": "poc/.venv/bin/uv",
+      "args": [
+        "run",
+        "--directory",
+        "poc/mcp-servers/strategy-review",
+        "strategy-review-mcp"
+      ],
+      "env": {
+        "OPENSEARCH_URL": "http://localhost:9200",
+        "OPENSEARCH_USER": "admin",
+        "OPENSEARCH_PASSWORD": "admin",
+        "AZURE_STORAGE_CONNECTION_STRING": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1",
+        "AZURE_STORAGE_CONTAINER": "strategy-pages"
+      }
     }
   }
 }

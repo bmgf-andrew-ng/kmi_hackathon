@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "strategy-review-mcp"
+version = "0.1.0"
+description = "MCP server for strategy document search and page image retrieval"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    "opensearch-py>=2.4.0",
+    "azure-storage-blob>=12.19.0",
+]
+
+[project.scripts]
+strategy-review-mcp = "strategy_review_mcp.server:main"

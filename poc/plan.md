@@ -352,6 +352,8 @@ poc/
 | 40 | Create `.claude/agents/image-retrieval.md` using `get_page_image` tool | Agent can retrieve and return page images |
 | 41 | Seed Azurite with sample page images in `seed/azurite/` | Images accessible via blob storage |
 
+> **Note from Story 58 (Strategy Review MCP verification):** The `azure-storage-blob` 12.28.0 SDK uses API version `2026-02-06` which Azurite 3.33.0 does not support. When implementing this story, add `--skipApiVersionCheck` to the Azurite command in `poc/docker-compose.yml` (e.g. `azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --skipApiVersionCheck`). The `get_page_image` MCP tool in `poc/mcp-servers/strategy-review/strategy_review_mcp/server.py` expects blobs named `{doc_id}/page_{page_num:03d}.png` inside container `strategy-pages`.
+
 #### Feature 5.2: Gender Tech Review Skill
 
 | # | Story | Acceptance Criteria |
