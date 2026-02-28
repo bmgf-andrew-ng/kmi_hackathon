@@ -68,8 +68,8 @@ Currently the repo has Claude Code config (agents, skills, playground) but zero 
   Expected: skill → agent → MCP → Neo4j → results synthesised
 
 ### Step 1.9: `.devcontainer` setup
-- **Create** `poc/.devcontainer/devcontainer.json` — Python 3.12, Node 22, port forwarding
-- **Create** `poc/.devcontainer/docker-compose.devcontainer.yml` — workspace container linked to data tier
+- **Create** `.devcontainer/devcontainer.json` — Python 3.12, Node 22, port forwarding
+- **Create** `.devcontainer/docker-compose.devcontainer.yml` — workspace container linked to data tier
 - **Verify**: VS Code "Reopen in Container" — all services up, MCP tools available
 
 ---
@@ -142,8 +142,8 @@ Currently the repo has Claude Code config (agents, skills, playground) but zero 
 | `.claude/agents/graph-traversal.md` | Create | Neo4j sub-agent |
 | `.claude/agents/document-search.md` | Create | Search sub-agent |
 | `.claude/skills/strategy-review/SKILL.md` | Create | First review topic skill |
-| `poc/.devcontainer/devcontainer.json` | Create | VS Code devcontainer config |
-| `poc/.devcontainer/docker-compose.devcontainer.yml` | Create | Devcontainer service |
+| `.devcontainer/devcontainer.json` | Create | VS Code devcontainer config |
+| `.devcontainer/docker-compose.devcontainer.yml` | Create | Devcontainer service |
 | `.claude/skills/gender-tech-review/SKILL.md` | Create | Gender Tech skill |
 | `.claude/skills/budget-review/SKILL.md` | Create | Budget skill |
 
@@ -206,11 +206,15 @@ poc/
 │           ├── __init__.py
 │           └── server.py                  # FastMCP server implementation
 │
-└── .devcontainer/                         # Developer Experience Layer
-    ├── devcontainer.json                  # VS Code devcontainer config
-    └── docker-compose.devcontainer.yml    # Workspace + data tier compose
+└── (mcp-servers, seed data, docker-compose)
 
-(Repo root — Claude Code conventions)
+(Repo root)
+.devcontainer/                                # Developer Experience Layer
+├── devcontainer.json                         # VS Code devcontainer config
+├── docker-compose.devcontainer.yml           # Workspace + data tier compose
+├── post-create.sh                            # Post-create setup script
+└── seed.sh                                   # Container-aware seed runner
+
 .claude/
 ├── agents/                                # Agent Layer
 │   ├── graph-traversal.md                 # Neo4j Cypher specialist
@@ -229,7 +233,7 @@ poc/
 |---|-------|-------------------|
 | 3 | Create the `poc/seed/neo4j/`, `poc/seed/opensearch/`, `poc/seed/azurite/` directory tree with `.gitkeep` files | All seed directories exist and are tracked by git |
 | 4 | Create the `poc/mcp-servers/strategy-review/strategy_review_mcp/` directory tree with `.gitkeep` | MCP server package structure exists |
-| 5 | Create the `poc/.devcontainer/` directory with `.gitkeep` | DevContainer directory exists |
+| 5 | Create the `.devcontainer/` directory at repo root | DevContainer directory exists |
 | 6 | Create placeholder directories for future agents and skills under `.claude/` | `.claude/agents/` and `.claude/skills/strategy-review/`, `gender-tech-review/`, `budget-review/` directories exist |
 
 #### Feature 0.3: Foundational Configuration Files

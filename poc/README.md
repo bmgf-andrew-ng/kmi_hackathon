@@ -44,9 +44,19 @@ poc/
 │                                            #   search_chunks(query, doc_id, top_k)
 │                                            #   get_page_image(doc_id, page_num)
 │
-└── .devcontainer/                           # Developer Experience Layer
-    ├── devcontainer.json                    # Python 3.12, Node 22, port forwarding
-    └── docker-compose.devcontainer.yml      # Workspace container linked to data tier
+└── (mcp-servers, seed data, docker-compose)
+```
+
+### At Repo Root
+
+`.devcontainer/` lives at the repo root (required by VS Code):
+
+```
+.devcontainer/
+├── devcontainer.json                        # Python 3.12, Node 22, port forwarding
+├── docker-compose.devcontainer.yml          # Workspace container linked to data tier
+├── post-create.sh                           # Post-create setup script
+└── seed.sh                                  # Container-aware seed runner
 ```
 
 ### At Repo Root — Claude Code Conventions
@@ -87,7 +97,7 @@ These files must live at the repo root per Claude Code's conventions:
 | **MCP Servers** | `poc/mcp-servers/`, `.mcp.json` | Custom FastMCP server + Neo4j MCP config | Epic 2: MCP Server Integration |
 | **Agents** | `.claude/agents/` | Graph-traversal, document-search, image-retrieval sub-agents | Epic 3: Sub-Agents & Strategy Review Skill |
 | **Skills** | `.claude/skills/` | Strategy, gender-tech, budget review slash commands | Epic 3 + Epic 5 |
-| **DevContainer** | `poc/.devcontainer/` | VS Code dev container with all services | Epic 4: Developer Experience |
+| **DevContainer** | `.devcontainer/` (repo root) | VS Code dev container with all services | Epic 4: Developer Experience |
 
 ---
 
@@ -116,7 +126,7 @@ These files must live at the repo root per Claude Code's conventions:
 | Azurite seed data | `poc/seed/azurite/` | — | Co-located with the infrastructure it seeds |
 | Unified seed runner | `poc/seed/seed-all.sh` | — | Orchestrates all seed scripts in one command |
 | Strategy Review MCP server | `poc/mcp-servers/strategy-review/` | — | Python application code; isolated package with `pyproject.toml` |
-| DevContainer config | `poc/.devcontainer/` | — | Binds to `poc/docker-compose.yml` services |
+| DevContainer config | `.devcontainer/` (repo root) | — | Binds to `poc/docker-compose.yml` services |
 | MCP server registry | `.mcp.json` (repo root) | **Claude Code convention** | Claude Code loads `.mcp.json` from repo root only; cannot be nested |
 | graph-traversal agent | `.claude/agents/graph-traversal.md` (repo root) | **Claude Code convention** | Agent discovery requires `.claude/agents/` at repo root |
 | document-search agent | `.claude/agents/document-search.md` (repo root) | **Claude Code convention** | Agent discovery requires `.claude/agents/` at repo root |
@@ -128,22 +138,195 @@ These files must live at the repo root per Claude Code's conventions:
 
 ---
 
-## Quick Start
+## Getting Started
 
-> Placeholder — will be functional after Epic 1 (Data Tier) is complete.
+> **Breaking Change (Epic 4):** `.mcp.json` was refactored from hardcoded
+> `localhost` values to `${VAR}` references. MCP servers (neo4j,
+> strategy-review) will **fail to connect** unless env vars are exported
+> before launching Claude Code.
+>
+> **Quick fix — run this before opening VS Code:**
+> ```bash
+> cd /path/to/gf-hackathon
+> source poc/start-claude.sh
+> ```
+> This exports all required env vars (MCP connection strings + AWS Bedrock
+> config) and opens VS Code. Then launch `claude` from the VS Code terminal.
+>
+> Without this, `${VAR}` resolves to empty strings and MCP servers get
+> invalid connection URIs.
+
+Two ways to run the stack — pick whichever suits your workflow.
+
+### Option A: Local Docker (run on host)
+
+Runs the three data-tier services in Docker while you work from your native terminal.
+
+**Prerequisites:** Docker Desktop running, Python 3.10+, `uv` installed.
+
+**1. Create the environment file**
 
 ```bash
-# 1. Start data stores
-cd poc && docker compose up -d
-
-# 2. Seed all stores
-./seed/seed-all.sh
-
-# 3. Verify
-docker compose ps                              # All healthy
-curl "http://localhost:9200/strategy-chunks/_search?q=maternal+health"  # OpenSearch
-open http://localhost:7474                      # Neo4j browser
-
-# 4. Use the skill
-# /strategy-review What themes does the Global Health Strategy cover?
+cp poc/.env.example poc/.env.docker
 ```
+
+Or use the provided `poc/.env.docker` if it already exists.
+
+**2. Start the data tier**
+
+```bash
+cd poc
+docker compose --env-file .env.docker up -d
+```
+
+**3. Wait for healthy services**
+
+```bash
+docker compose ps
+```
+
+All three (neo4j, opensearch, azurite) should show `healthy` — takes ~30–60s on first boot.
+
+**4. Export env vars for Claude Code**
+
+Since `.mcp.json` uses `${VAR}` references, export the variables in your shell:
+
+```bash
+cd /path/to/gf-hackathon
+set -a; source poc/.env.docker; set +a
+```
+
+**5. Seed the data stores**
+
+```bash
+bash poc/seed/neo4j/seed.sh
+bash poc/seed/opensearch/seed.sh
+```
+
+**6. Verify services**
+
+```bash
+# Neo4j — should return a node count
+curl -s -u neo4j:password http://localhost:7474/db/neo4j/tx/commit \
+  -H "Content-Type: application/json" \
+  -d '{"statements":[{"statement":"MATCH (n) RETURN count(n) AS count"}]}'
+
+# OpenSearch — should return cluster health
+curl -s http://localhost:9200/_cluster/health | python3 -m json.tool
+
+# Azurite — should succeed
+nc -z localhost 10000 && echo "Azurite is up"
+```
+
+**7. Launch Claude Code**
+
+```bash
+claude
+```
+
+Then type `/mcp` to verify neo4j and strategy-review tools are visible.
+
+**8. Tear down**
+
+```bash
+cd poc
+docker compose down        # stops containers, keeps data volumes
+docker compose down -v     # stops containers AND deletes data volumes
+```
+
+---
+
+### Option B: VS Code DevContainer
+
+Spins up everything inside containers — workspace + data tier — using VS Code's "Reopen in Container".
+
+**Prerequisites:** Docker Desktop running, VS Code with the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension.
+
+**1. Ensure `poc/.env.docker` exists**
+
+```bash
+cp poc/.env.example poc/.env.docker
+```
+
+**2. Open the repo in VS Code**
+
+```bash
+code /path/to/gf-hackathon
+```
+
+**3. Reopen in Container**
+
+`Cmd+Shift+P` → **Dev Containers: Reopen in Container**
+
+VS Code will:
+- Pull the Python 3.12 workspace image + data-tier images (first time only)
+- Start neo4j, opensearch, azurite and wait for health checks
+- Start the workspace container
+- Run `.devcontainer/post-create.sh` (installs `uv`, creates venv, installs MCP server)
+
+**4. Seed the data stores** (in the DevContainer terminal)
+
+```bash
+bash .devcontainer/seed.sh
+```
+
+**5. Verify services** (in the DevContainer terminal)
+
+```bash
+# Neo4j
+curl -s -u neo4j:password http://neo4j:7474/db/neo4j/tx/commit \
+  -H "Content-Type: application/json" \
+  -d '{"statements":[{"statement":"MATCH (n) RETURN count(n) AS count"}]}'
+
+# OpenSearch
+curl -s http://opensearch:9200/_cluster/health | python3 -m json.tool
+
+# Azurite
+nc -z azurite 10000 && echo "Azurite is up"
+```
+
+**6. Test MCP servers directly** (in the DevContainer terminal)
+
+```bash
+# Strategy Review MCP — list tools
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | \
+  poc/.venv/bin/uv run --directory poc/mcp-servers/strategy-review strategy-review-mcp
+
+# Neo4j MCP — list tools
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | \
+  poc/.venv/bin/uvx mcp-neo4j-cypher
+```
+
+If both return JSON with a `tools` array, the MCP servers are working.
+
+**7. Access web UIs from your host browser** (ports are auto-forwarded)
+
+| Service | URL |
+|---------|-----|
+| Neo4j Browser | `http://localhost:7474` (login: `neo4j` / `password`) |
+| OpenSearch API | `http://localhost:9200` |
+
+**8. Return to local dev**
+
+`Cmd+Shift+P` → **Dev Containers: Reopen Folder Locally**
+
+> **Future:** Once Claude Code can be installed inside the DevContainer, use
+> `/mcp` to verify MCP tool visibility and `/strategy-review` to test the
+> full skill → agent → MCP → data store pipeline end-to-end.
+
+---
+
+### Environment Variables Reference
+
+| Variable | Local (`.env.docker`) | DevContainer (`containerEnv`) | Used By |
+|---|---|---|---|
+| `NEO4J_URI` | `bolt://localhost:7687` | `bolt://neo4j:7687` | `.mcp.json` → neo4j MCP |
+| `NEO4J_USER` | `neo4j` | `neo4j` | docker-compose, `.mcp.json`, seed scripts |
+| `NEO4J_PASSWORD` | `password` | `password` | docker-compose, `.mcp.json`, seed scripts |
+| `OPENSEARCH_URL` | `http://localhost:9200` | `http://opensearch:9200` | `.mcp.json` → strategy-review MCP |
+| `OPENSEARCH_USER` | `admin` | `admin` | `.mcp.json` → strategy-review MCP |
+| `OPENSEARCH_PASSWORD` | `admin` | `admin` | docker-compose, `.mcp.json` |
+| `AZURE_STORAGE_CONNECTION_STRING` | `...BlobEndpoint=http://127.0.0.1:10000/...` | `...BlobEndpoint=http://azurite:10000/...` | `.mcp.json` → strategy-review MCP |
+| `AZURE_STORAGE_CONTAINER` | `strategy-pages` | `strategy-pages` | `.mcp.json` → strategy-review MCP |
+
+The only difference between the two modes is the hostname — `localhost`/`127.0.0.1` for local dev vs Docker service names (`neo4j`, `opensearch`, `azurite`) for DevContainer.

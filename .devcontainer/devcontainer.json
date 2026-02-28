@@ -1,0 +1,48 @@
+{
+  "name": "GF Hackathon PoC",
+  "dockerComposeFile": "docker-compose.devcontainer.yml",
+  "service": "workspace",
+  "workspaceFolder": "/workspaces/gf-hackathon",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    }
+  },
+
+  "forwardPorts": [7474, 7687, 9200, 10000],
+  "portsAttributes": {
+    "7474":  { "label": "Neo4j Browser",  "onAutoForward": "notify" },
+    "7687":  { "label": "Neo4j Bolt",     "onAutoForward": "silent" },
+    "9200":  { "label": "OpenSearch",      "onAutoForward": "silent" },
+    "10000": { "label": "Azurite Blob",    "onAutoForward": "silent" }
+  },
+
+  "containerEnv": {
+    "NEO4J_URI": "bolt://neo4j:7687",
+    "NEO4J_USER": "neo4j",
+    "NEO4J_PASSWORD": "password",
+    "OPENSEARCH_URL": "http://opensearch:9200",
+    "OPENSEARCH_USER": "admin",
+    "OPENSEARCH_PASSWORD": "admin",
+    "AZURE_STORAGE_CONNECTION_STRING": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1",
+    "AZURE_STORAGE_CONTAINER": "strategy-pages"
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "ms-azuretools.vscode-docker",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/workspaces/gf-hackathon/poc/.venv/bin/python"
+      }
+    }
+  }
+}

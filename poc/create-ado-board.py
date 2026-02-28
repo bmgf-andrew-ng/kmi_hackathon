@@ -249,9 +249,9 @@ def main():
         parent_id=f02_id, priority=1, tags=["PoC", "Phase-0"],
     )
     create_story(
-        "Create poc/.devcontainer/ directory with .gitkeep",
-        "Create the <code>poc/.devcontainer/</code> directory with <code>.gitkeep</code>.",
-        "DevContainer directory exists.",
+        "Create .devcontainer/ directory at repo root",
+        "Create the <code>.devcontainer/</code> directory at the repo root (required by VS Code).",
+        "DevContainer directory exists at repo root.",
         parent_id=f02_id, priority=1, tags=["PoC", "Phase-0"],
     )
     create_story(

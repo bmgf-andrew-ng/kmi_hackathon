@@ -1,0 +1,19 @@
+include:
+  - path: ../poc/docker-compose.yml
+    env_file: ../poc/.env.docker
+
+services:
+  workspace:
+    image: mcr.microsoft.com/devcontainers/python:1-3.12-bookworm
+    volumes:
+      - ..:/workspaces/gf-hackathon:cached
+    command: sleep infinity
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
+    env_file:
+      - ../poc/.env.docker
