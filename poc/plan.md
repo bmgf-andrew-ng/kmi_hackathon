@@ -32,7 +32,7 @@ Currently the repo has Claude Code config (agents, skills, playground) but zero 
 ### Step 1.4: Configure Neo4j MCP Server
 - **Modify** `.mcp.json` — add `neo4j` server using `uvx mcp-neo4j-cypher` (Python package, stdio transport)
   - Exposes tools: `read_neo4j_cypher`, `write_neo4j_cypher`, `get_neo4j_schema`
-- **Pre-req**: `uv` must be installed (`brew install uv` or `pip install uv`)
+- **Pre-req**: `uv` installed in `poc/.venv` (`python3 -m venv poc/.venv && poc/.venv/bin/pip install uv`)
 - **Verify**: Restart Claude Code, run `/mcp` to confirm tools visible. Ask Claude: "Use the Neo4j MCP to get the database schema"
 
 ### Step 1.5: Build Strategy Review MCP Server (Python)
@@ -150,7 +150,7 @@ Currently the repo has Claude Code config (agents, skills, playground) but zero 
 ## Risks
 
 1. **MCP tools in sub-agents** — Sub-agents may not have access to MCP tools if Claude Code doesn't inject them. Test immediately at step 5. Fallback: skills call MCP tools directly and pass results to agents as context.
-2. **`mcp-neo4j-cypher` requires `uvx`** — Need `uv` installed. If not available, can use `pip install mcp-neo4j-cypher` and run via `python -m mcp_neo4j_cypher`.
+2. **`mcp-neo4j-cypher` requires `uvx`** — `uv` is installed inside `poc/.venv` (gitignored). `.mcp.json` references `poc/.venv/bin/uvx`. If venv is missing, recreate with `python3 -m venv poc/.venv && poc/.venv/bin/pip install uv`.
 3. **OpenSearch != Azure AI Search** — Query syntax differs. For PoC, code directly against OpenSearch. Production adapter can be added later.
 
 ## Verification (End-to-End Test)
