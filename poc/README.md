@@ -140,22 +140,6 @@ These files must live at the repo root per Claude Code's conventions:
 
 ## Getting Started
 
-> **Breaking Change (Epic 4):** `.mcp.json` was refactored from hardcoded
-> `localhost` values to `${VAR}` references. MCP servers (neo4j,
-> strategy-review) will **fail to connect** unless env vars are exported
-> before launching Claude Code.
->
-> **Quick fix — run this before opening VS Code:**
-> ```bash
-> cd /path/to/gf-hackathon
-> source poc/start-claude.sh
-> ```
-> This exports all required env vars (MCP connection strings + AWS Bedrock
-> config) and opens VS Code. Then launch `claude` from the VS Code terminal.
->
-> Without this, `${VAR}` resolves to empty strings and MCP servers get
-> invalid connection URIs.
-
 Two ways to run the stack — pick whichever suits your workflow.
 
 ### Option A: Local Docker (run on host)

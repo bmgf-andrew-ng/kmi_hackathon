@@ -9,7 +9,7 @@
     },
     "ado-mcp": {
       "command": "docker",
-      "args": ["compose", "run", "--rm", "-T", "ado-mcp-stdio"],
+      "args": ["exec", "-i", "ado-mcp-stdio", "/app/entrypoint.sh"],
       "env": {
         "ADO_ORG_URL": "${ADO_ORG_URL}",
         "ADO_PAT": "${ADO_PAT}",
