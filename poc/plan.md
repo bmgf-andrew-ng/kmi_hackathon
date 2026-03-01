@@ -386,6 +386,172 @@ poc/
 
 ---
 
+## Phase 3 — Presentation Layer (Web UI)
+
+### Decisions
+
+- **Auth**: Skip entirely for PoC (no Keycloak, no API key check). Phase 2 concern.
+- **Model**: Claude Sonnet via AWS Bedrock (`us.anthropic.claude-sonnet-4-20250514-v1:0`).
+- **API provider**: AWS Bedrock (not direct Anthropic API). Auth via `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` + `AWS_REGION` env vars.
+- **Dev model**: DevContainer-first — optimise for zero-setup sharing across developers.
+- **Claude Code CLI in devcontainer**: Yes — with `CLAUDE_CODE_USE_BEDROCK=1`.
+- **Playground plugin**: Not suitable — tool use loop requires server-side backend (MCP servers use stdio transport, data stores have CORS restrictions, API keys would be exposed in browser).
+
+### Architecture
+
+```
+Browser → Next.js API Route → AWS Bedrock (Claude Sonnet, streaming)
+                                    ↕ tool_use / tool_result
+                              MCP Client Manager
+                              ├── strategy-review MCP (stdio) → OpenSearch + Azurite
+                              └── neo4j MCP (stdio) → Neo4j
+```
+
+The `@modelcontextprotocol/sdk` Client class spawns existing MCP servers as child processes — zero code duplication, dynamic tool discovery via `client.listTools()`, same tool signatures.
+
+### DevContainer-First Development Model
+
+```
+Host Machine
+├── VS Code → "Reopen in Container"
+└── Docker Desktop
+    ├── workspace (devcontainer)
+    │   ├── VS Code Server + terminal
+    │   ├── Node.js 22 (npm run dev → port 3001, auto-forwarded)
+    │   │   └── MCP servers (child procs → Docker service names)
+    │   ├── Python 3.12 + uv (MCP server deps)
+    │   ├── Claude Code CLI (skills/agents dev)
+    │   └── AWS CLI credentials via env vars
+    ├── neo4j (:7474, :7687)
+    ├── opensearch (:9200)
+    └── azurite (:10000)
+```
+
+### Target Structure
+
+```
+poc/web/
+├── package.json
+├── tsconfig.json
+├── next.config.ts
+├── .env.local              # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, data store URLs
+├── app/
+│   ├── layout.tsx          # Root layout, dark theme, global styles
+│   ├── page.tsx            # Chat UI page
+│   ├── globals.css         # Dark GitHub-inspired theme
+│   └── api/
+│       └── chat/
+│           └── route.ts    # Streaming API route (POST)
+├── lib/
+│   ├── mcp-manager.ts      # MCP server lifecycle + tool routing
+│   └── system-prompts.ts   # Skill system prompts (from SKILL.md files)
+└── components/
+    ├── chat.tsx             # Chat container with message list + input
+    ├── message.tsx          # Message bubble (markdown rendering)
+    └── skill-selector.tsx   # Strategy / Gender-Tech / Budget selector
+```
+
+---
+
+### Epic 6: Presentation Layer (Web UI)
+
+*Add a Next.js 15 web app so non-technical users can query strategies, budgets, and gender-tech data through a browser — powered by AWS Bedrock + existing MCP servers.*
+
+**Depends on:** Epic 2 (MCP Servers) + Epic 3 (Agents & Skills) + Epic 4 (DevContainer)
+
+#### Feature 6.1: Next.js App Scaffolding
+
+| # | Story | Acceptance Criteria |
+|---|-------|-------------------|
+| 45 | Scaffold Next.js 15 app with App Router + TypeScript in `poc/web/` | `npx create-next-app` generates working app at `poc/web/`, `npm run dev` starts on port 3001 |
+| 46 | Add project dependencies: `@anthropic-ai/sdk`, `@modelcontextprotocol/sdk`, `react-markdown`, `remark-gfm` | All deps in `package.json`, `npm install` succeeds |
+| 47 | Create `.env.local` template with AWS Bedrock credentials and data store URLs | Template file documents all required env vars; `.env.local` is gitignored |
+
+#### Feature 6.2: MCP Client Manager
+
+| # | Story | Acceptance Criteria |
+|---|-------|-------------------|
+| 48 | Implement `lib/mcp-manager.ts` singleton that spawns strategy-review and neo4j MCP servers as child processes via `StdioClientTransport` | MCP servers start on first request, singleton prevents duplicate processes |
+| 49 | Implement dynamic tool discovery — `client.listTools()` at startup extracts tool definitions for the Anthropic API | Tools `search_documents`, `search_chunks`, `get_page_image`, `read_neo4j_cypher` discovered and formatted as Anthropic tool schemas |
+| 50 | Implement `callTool(serverName, toolName, args)` routing and graceful shutdown on process exit | Tool calls routed to correct MCP server; servers cleaned up on `SIGTERM`/`SIGINT` |
+
+#### Feature 6.3: System Prompts & Skill Integration
+
+| # | Story | Acceptance Criteria |
+|---|-------|-------------------|
+| 51 | Create `lib/system-prompts.ts` with strategy-review system prompt extracted from `.claude/skills/strategy-review/SKILL.md` | Prompt includes graph schema, document corpus, classification logic, and synthesis output format |
+| 52 | Add gender-tech-review system prompt variant (gender equality & women's health lens) | Prompt focuses on GDI indicator, GPE funding, GE_2023 framework |
+| 53 | Add budget-review system prompt variant (funding allocations & budget breakdowns) | Prompt focuses on FundingArea nodes, allocation percentages, $535M total budget |
+
+#### Feature 6.4: Streaming API Route with Tool Use Loop
+
+| # | Story | Acceptance Criteria |
+|---|-------|-------------------|
+| 54 | Implement `app/api/chat/route.ts` POST handler with `AnthropicBedrock` client (`us.anthropic.claude-sonnet-4-20250514-v1:0`) | Route accepts `{ messages, skill }`, selects system prompt, returns streaming response |
+| 55 | Implement server-side tool use loop — on `tool_use` block, call `mcpManager.callTool()`, return `tool_result`, resume | Claude queries Neo4j/OpenSearch via MCP tools transparently; loop handles multiple tool calls per turn |
+| 56 | Implement streaming response via `ReadableStream` with `Content-Type: text/event-stream` | Text tokens stream to client as they arrive; tool use happens silently server-side |
+| 57 | **End-to-end test**: POST to `/api/chat` with "What funding is allocated to TB?" | Returns streaming response with funding data from Neo4j graph ($60M PREV→TB) |
+
+#### Feature 6.5: Chat UI
+
+| # | Story | Acceptance Criteria |
+|---|-------|-------------------|
+| 58 | Build `components/skill-selector.tsx` — three buttons/tabs: Strategy Review, Gender-Tech, Budget | Selected skill highlighted; selection passed to API route |
+| 59 | Build `components/chat.tsx` — chat container with scrollable message list and text input | Messages display in order; input clears on send; auto-scroll to latest |
+| 60 | Build `components/message.tsx` — message bubble with markdown rendering (tables, citations, block quotes) | `react-markdown` + `remark-gfm` renders tables, inline citations, and block quotes correctly |
+| 61 | Implement streaming display — tokens appear incrementally as they arrive from SSE | User sees text building up word-by-word, not all at once |
+| 62 | Apply dark GitHub-inspired theme matching existing playground styling | Dark background (#0d1117), light text (#c9d1d9), consistent with `architecture-review-playground.html` |
+
+#### Feature 6.6: DevContainer Integration
+
+| # | Story | Acceptance Criteria |
+|---|-------|-------------------|
+| 63 | Update `.devcontainer/devcontainer.json` — add port 3001 forwarding, AWS credentials to `containerEnv`, `CLAUDE_CODE_USE_BEDROCK=1` | Port 3001 labelled "Web UI"; AWS env vars available inside container |
+| 64 | Update `.devcontainer/post-create.sh` — install Claude Code CLI (`npm install -g @anthropic-ai/claude-code`) and web app deps (`cd poc/web && npm install`) | Both installs succeed in post-create; `claude --version` and `npm run dev` work inside container |
+| 65 | **Verification**: Rebuild devcontainer, seed data, start web app on port 3001 | "Reopen in Container" → data stores healthy → `npm run dev` → http://localhost:3001 loads |
+| 66 | **Verification**: Claude Code CLI works with Bedrock inside devcontainer | `claude` command launches, MCP tools (`/mcp`) visible, skills (`/strategy-review`) functional |
+
+---
+
+### Files to Create (Phase 3)
+
+| File | Purpose |
+|------|---------|
+| `poc/web/package.json` | Next.js 15 + deps |
+| `poc/web/tsconfig.json` | TypeScript config |
+| `poc/web/next.config.ts` | Next.js config |
+| `poc/web/.env.local` | AWS credentials + data store URLs (gitignored) |
+| `poc/web/app/layout.tsx` | Root layout + dark theme |
+| `poc/web/app/page.tsx` | Chat page |
+| `poc/web/app/globals.css` | Dark GitHub-inspired styles |
+| `poc/web/app/api/chat/route.ts` | Streaming API route + tool use loop |
+| `poc/web/lib/mcp-manager.ts` | MCP server lifecycle + tool routing |
+| `poc/web/lib/system-prompts.ts` | Skill system prompts |
+| `poc/web/components/chat.tsx` | Chat container |
+| `poc/web/components/message.tsx` | Message rendering (markdown) |
+| `poc/web/components/skill-selector.tsx` | Skill picker |
+
+### Files to Modify (Phase 3)
+
+| File | Change |
+|------|--------|
+| `.devcontainer/devcontainer.json` | Add port 3001, AWS creds, CLAUDE_CODE_USE_BEDROCK |
+| `.devcontainer/post-create.sh` | Install Claude Code CLI + web app npm deps |
+
+### Verification (Phase 3 — inside devcontainer)
+
+1. **Rebuild devcontainer**: VS Code → "Rebuild Container" — verify all services start (Neo4j 7474, OpenSearch 9200, Azurite 10000)
+2. **Seed data**: `bash .devcontainer/seed.sh` — verify data in all three stores
+3. **Web app starts**: `cd poc/web && npm run dev` — verify http://localhost:3001 loads (auto-forwarded)
+4. **MCP servers connect**: Check terminal output — strategy-review and neo4j MCP servers spawn on first request
+5. **Strategy review**: Ask "What funding is allocated to TB?" — expect graph data with funding amounts from Neo4j
+6. **Gender-tech review**: Ask "What is the GDI target?" — expect GDI baseline 0.82, target 1.0
+7. **Budget review**: Ask "How is prevention funding allocated?" — expect PREV $200M breakdown with table
+8. **Streaming**: Verify tokens appear incrementally (not all at once) in the chat UI
+9. **Claude Code CLI**: Run `claude` in devcontainer terminal — verify skills and MCP tools work via Bedrock
+
+---
+
 ### Board Summary
 
 | Epic | Name | Features | Stories | Phase |
@@ -396,7 +562,8 @@ poc/
 | 3 | Sub-Agents & Strategy Review Skill | 3 | 8 | Phase 1 |
 | 4 | Developer Experience (DevContainer) | 1 | 3 | Phase 1 |
 | 5 | Additional Review Skills & Polish | 4 | 5 | Phase 2 |
-| **Total** | | **16** | **44** | |
+| **6** | **Presentation Layer (Web UI)** | **6** | **22** | **Phase 3** |
+| **Total** | | **22** | **66** | |
 
 ### Dependency Graph (with Epic 0)
 
@@ -404,6 +571,12 @@ poc/
 Epic 0 (Structure & Scaffolding)
   │
   ├──→ Epic 1 (Data Tier) → Epic 2 (MCP Servers) → Epic 3 (Agents & Skill) → Epic 5 (More Skills)
-  │                                                        │
-  └──→ ─────────────────────────────────────────────→ Epic 4 (DevContainer)
+  │                                │                       │
+  │                                └───────────────────────┤
+  │                                                        ↓
+  └──→ ──────────────────────────────────────────→ Epic 4 (DevContainer)
+                                                           │
+                                    Epic 2 + Epic 3 + Epic 4
+                                                           ↓
+                                                   Epic 6 (Web UI)
 ```

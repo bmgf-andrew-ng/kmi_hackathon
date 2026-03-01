@@ -17,5 +17,10 @@ poc/mcp-servers/*/.venv/
 # PoC — Docker data volumes
 poc/data/
 
+# PoC — Web app
+poc/web/node_modules/
+poc/web/.next/
+poc/web/.env.local
+
 # PoC — IDE / tooling
 .venv/

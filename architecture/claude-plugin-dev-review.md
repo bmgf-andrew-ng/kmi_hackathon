@@ -21,7 +21,7 @@ A three-store RAG architecture where Claude accesses Neo4j (graph), Azure AI Sea
 
 | Component | Production | Local Dev (Docker) | Status |
 |-----------|-----------|-------------------|--------|
-| Web UI | Next.js 15 on Azure Container Apps | `node:22-alpine` (port 3000) | **New** |
+| Web UI | Next.js 15 on Azure Container Apps | `node:22-alpine` (port 3001) | **New** |
 | Auth Service | Keycloak 26 on Azure Container Apps | `quay.io/keycloak/keycloak:26.0` (port 8080) | **New** |
 | Claude | Anthropic API (claude-opus-4-0-20250115) | Claude Code CLI | Existing |
 | Strategy Review MCP Server | Python FastMCP (stdio/SSE) | stdio process in devcontainer | Existing (refactored) |

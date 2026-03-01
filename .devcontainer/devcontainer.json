@@ -10,8 +10,9 @@
     }
   },
 
-  "forwardPorts": [7474, 7687, 9200, 10000],
+  "forwardPorts": [3001, 7474, 7687, 9200, 10000],
   "portsAttributes": {
+    "3001":  { "label": "Web UI",          "onAutoForward": "notify" },
     "7474":  { "label": "Neo4j Browser",  "onAutoForward": "notify" },
     "7687":  { "label": "Neo4j Bolt",     "onAutoForward": "silent" },
     "9200":  { "label": "OpenSearch",      "onAutoForward": "silent" },
@@ -26,7 +27,9 @@
     "OPENSEARCH_USER": "admin",
     "OPENSEARCH_PASSWORD": "admin",
     "AZURE_STORAGE_BLOB_ENDPOINT": "http://azurite:10000/devstoreaccount1",
-    "AZURE_STORAGE_CONTAINER": "strategy-pages"
+    "AZURE_STORAGE_CONTAINER": "strategy-pages",
+    "WORKSPACE_ROOT": "/workspaces/gf-hackathon",
+    "CLAUDE_CODE_USE_BEDROCK": "1"
   },
 
   "postCreateCommand": "bash .devcontainer/post-create.sh",
