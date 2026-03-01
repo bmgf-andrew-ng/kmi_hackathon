@@ -48,7 +48,23 @@ poc/
 │                                            #   search_chunks(query, doc_id, top_k)
 │                                            #   get_page_image(doc_id, page_num)
 │
-└── (mcp-servers, seed data, docker-compose)
+└── web/                                     # Presentation Layer — Next.js 15 web app
+    ├── package.json                         # Dependencies: bedrock-sdk, mcp-sdk, react-markdown
+    ├── next.config.ts                       # serverExternalPackages for MCP SDK
+    ├── .env.example                         # Template for AWS + data store env vars
+    ├── app/
+    │   ├── layout.tsx                       # Root layout with dark theme
+    │   ├── page.tsx                         # Chat page with skill selector
+    │   ├── globals.css                      # Dark GitHub-inspired styles
+    │   └── api/chat/route.ts                # Streaming API route with tool use loop
+    ├── lib/
+    │   ├── mcp-manager.ts                   # MCP server lifecycle + tool routing
+    │   └── system-prompts.ts                # Skill system prompts with classification
+    ├── components/
+    │   ├── chat.tsx                          # Chat container with message list + input
+    │   ├── message.tsx                       # Message bubble (react-markdown)
+    │   └── skill-selector.tsx                # Strategy / Gender-Tech / Budget picker
+    └── sequence-diagram.html                # Interactive Mermaid sequence diagram
 ```
 
 ### At Repo Root
@@ -100,6 +116,7 @@ These files must live at the repo root per Claude Code's conventions:
 | **MCP Servers** | `poc/mcp-servers/`, `.mcp.json` | Custom FastMCP server + Neo4j MCP config | Epic 2: MCP Server Integration |
 | **Agents** | `.claude/agents/` | Graph-traversal, document-search, image-retrieval sub-agents | Epic 3: Sub-Agents & Strategy Review Skill |
 | **Skills** | `.claude/skills/` | Strategy, gender-tech, budget review slash commands | Epic 3 + Epic 5 |
+| **Presentation** | `poc/web/` | Next.js 15 chat UI with streaming Bedrock API + MCP tool use loop | Epic 6: Presentation Layer |
 | **DevContainer** | `.devcontainer/` (repo root) | VS Code dev container with all services | Epic 4: Developer Experience |
 
 ---
@@ -308,6 +325,7 @@ If both return JSON with a `tools` array, the MCP servers are working.
 
 | Service | URL |
 |---------|-----|
+| Web UI | `http://localhost:3001` (run `cd poc/web && npm run dev` first) |
 | Neo4j Browser | `http://localhost:7474` (login: `neo4j` / `password`) |
 | OpenSearch API | `http://localhost:9200` |
 
@@ -315,9 +333,7 @@ If both return JSON with a `tools` array, the MCP servers are working.
 
 `Cmd+Shift+P` → **Dev Containers: Reopen Folder Locally**
 
-> **Future:** Once Claude Code can be installed inside the DevContainer, use
-> `/mcp` to verify MCP tool visibility and `/strategy-review` to test the
-> full skill → agent → MCP → data store pipeline end-to-end.
+> **Web UI:** Run `cd poc/web && npm run dev` in the DevContainer terminal to start the chat interface on port 3001. See the **E2E Testing** section below for validation steps.
 
 ---
 
@@ -423,6 +439,136 @@ Focused on FundingArea nodes, ALLOCATES_TO relationships, and financial planning
 ```
 
 > Dispatches to **text** agent — searches for digital health funding rationale across strategy documents, returns justification passages with citations.
+
+---
+
+## Web UI
+
+A Next.js 15 web app that provides the same skill-based analysis through a browser chat interface. The API route handles the tool use loop server-side — spawning MCP servers as child processes, routing tool calls, and streaming the response back via SSE.
+
+### Running the Web UI
+
+**Inside the DevContainer:**
+
+```bash
+cd poc/web
+npm run dev          # starts on port 3001
+```
+
+The app is available at `http://localhost:3001` (port auto-forwarded from the DevContainer).
+
+**On the host (requires data tier running via docker compose):**
+
+```bash
+cd poc/web
+cp .env.example .env.local
+# Edit .env.local with your AWS credentials and localhost URLs
+npm install
+npm run dev
+```
+
+### E2E Testing
+
+These tests validate the full pipeline: Browser → API Route → AWS Bedrock → MCP tool use loop → Data Stores → Streaming response.
+
+**Prerequisites:** Data stores running and seeded, AWS credentials configured, web app running on port 3001.
+
+#### 1. Seed the data stores (if not already done)
+
+```bash
+# Neo4j — 33 nodes (3 Documents, 7 Themes, 10 Indicators, 8 Countries, 5 FundingAreas)
+docker exec -i <neo4j-container> cypher-shell -u neo4j -p password -d neo4j < poc/seed/neo4j/seed.cypher
+
+# OpenSearch — 15 document chunks across 3 documents
+bash poc/seed/opensearch/create-index.sh
+curl -sf -X POST "http://localhost:9200/_bulk" \
+  -H "Content-Type: application/x-ndjson" \
+  --data-binary "@poc/seed/opensearch/chunks.ndjson"
+curl -sf -X POST "http://localhost:9200/strategy-chunks/_refresh"
+
+# Azurite — page images (optional, only needed for get_page_image tool)
+bash poc/seed/azurite/seed.sh
+```
+
+> **Note:** Replace `<neo4j-container>` with the actual container name — `gf-hackathon_devcontainer-neo4j-1` (DevContainer) or `poc-neo4j-1` (local docker compose).
+
+#### 2. Verify the API endpoint is reachable
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/api/chat \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"messages":[],"skill":"strategy-review"}'
+# Expected: 400 (empty messages validation)
+```
+
+#### 3. Strategy Review — Graph query (TB funding)
+
+```bash
+curl -s --no-buffer http://localhost:3001/api/chat \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"What funding is allocated to TB?"}],"skill":"strategy-review"}'
+```
+
+**Expected behaviour:**
+- Claude classifies as **Graph** query
+- Calls `neo4j__read_neo4j_cypher` tool (1-3 Cypher queries)
+- Returns **PREV → TB allocation: $60M (30%)** of Disease Prevention Programs budget
+- Response includes a funding table, Knowledge Graph citations, and follow-up questions
+- Stream ends with `data: [DONE]`
+
+#### 4. Gender-Tech Review — Graph query (GDI target)
+
+```bash
+curl -s --no-buffer http://localhost:3001/api/chat \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"What is the GDI target?"}],"skill":"gender-tech-review"}'
+```
+
+**Expected behaviour:**
+- Calls `neo4j__read_neo4j_cypher` tool
+- Returns **GDI baseline 0.82, target 1.0 by 2028**
+- Mentions GENDER theme and GPE funding area
+
+#### 5. Budget Review — Graph query (total budget)
+
+```bash
+curl -s --no-buffer http://localhost:3001/api/chat \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"What is the total budget across all funding areas?"}],"skill":"budget-review"}'
+```
+
+**Expected behaviour:**
+- Calls `neo4j__read_neo4j_cypher` tool
+- Returns **$535M total** across 5 funding areas: HSS $150M, PREV $200M, DIGI $75M, CAPACITY $60M, GPE $50M
+- Includes Financial Summary table
+
+#### 6. Strategy Review — Text query (malaria prevention)
+
+```bash
+curl -s --no-buffer http://localhost:3001/api/chat \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"What does the Global Health Strategy say about malaria prevention?"}],"skill":"strategy-review"}'
+```
+
+**Expected behaviour:**
+- Calls `strategy-review__search_documents` and/or `strategy-review__search_chunks`
+- Returns text passages from GH_2024 with section and page citations
+
+#### 7. Verify streaming
+
+All of the above should return SSE events incrementally:
+
+```
+data: {"type":"text","content":"I"}
+data: {"type":"text","content":"'ll search..."}
+data: {"type":"text","content":"\n\n*Querying neo4j__read_neo4j_cypher...*\n\n"}
+...
+data: {"type":"text","content":"## Answer\n..."}
+...
+data: [DONE]
+```
+
+Tool use happens silently server-side — the `*Querying tool_name...*` status messages appear inline so the user knows tools are being called.
 
 ---
 
