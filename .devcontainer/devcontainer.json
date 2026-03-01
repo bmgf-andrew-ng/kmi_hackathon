@@ -29,7 +29,10 @@
     "AZURE_STORAGE_BLOB_ENDPOINT": "http://azurite:10000/devstoreaccount1",
     "AZURE_STORAGE_CONTAINER": "strategy-pages",
     "WORKSPACE_ROOT": "/workspaces/gf-hackathon",
-    "CLAUDE_CODE_USE_BEDROCK": "1"
+    "CLAUDE_CODE_USE_BEDROCK": "1",
+    "AWS_ACCESS_KEY_ID": "${localEnv:AWS_ACCESS_KEY_ID}",
+    "AWS_SECRET_ACCESS_KEY": "${localEnv:AWS_SECRET_ACCESS_KEY}",
+    "AWS_REGION": "${localEnv:AWS_REGION}"
   },
 
   "postCreateCommand": "bash .devcontainer/post-create.sh",
