@@ -177,8 +177,22 @@ class McpManager {
 
 // Module-level singleton — lives for the lifetime of the Next.js process.
 // In dev mode, use globalThis to survive hot reloads.
-const globalForMcp = globalThis as unknown as { mcpManager?: McpManager };
+const globalForMcp = globalThis as unknown as {
+  mcpManager?: McpManager;
+  mcpShutdownRegistered?: boolean;
+};
 export const mcpManager = globalForMcp.mcpManager ?? new McpManager();
 if (process.env.NODE_ENV !== "production") {
   globalForMcp.mcpManager = mcpManager;
+}
+
+// Graceful shutdown — clean up child processes on SIGTERM/SIGINT.
+// Guard against re-registering on hot reloads.
+if (!globalForMcp.mcpShutdownRegistered) {
+  const shutdown = () => {
+    mcpManager.shutdown().finally(() => process.exit(0));
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+  globalForMcp.mcpShutdownRegistered = true;
 }

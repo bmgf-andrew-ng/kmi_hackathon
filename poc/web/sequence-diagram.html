@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web UI Sequence Diagram</title>
+    <style>
+        body {
+            background: #0d1117;
+            color: #e6edf3;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        p.subtitle {
+            color: #8b949e;
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+        }
+        .mermaid {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 2rem;
+            max-width: 100%;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Phase 3 Web UI Sequence Diagram</h1>
+    <p class="subtitle">Browser to API Route to AWS Bedrock with MCP Tool Use Loop to Data Stores</p>
+
+    <pre class="mermaid">
+sequenceDiagram
+    actor User
+    participant Browser
+    participant API as API Route
+    participant Prompts as System Prompts
+    participant MCP as MCP Manager
+    participant SR as strategy-review MCP
+    participant Neo as neo4j MCP
+    participant Bedrock as AWS Bedrock
+    participant OS as OpenSearch
+    participant Az as Azurite
+    participant N4J as Neo4j
+
+    Note over Browser: User selects skill
+
+    User->>Browser: Types question and clicks Send
+    Browser->>API: POST chat endpoint
+
+    Note over API: First request triggers MCP init
+
+    API->>MCP: initialise
+    activate MCP
+
+    par Spawn MCP servers
+        MCP->>SR: StdioClientTransport spawn
+        SR-->>MCP: connected
+        MCP->>SR: listTools
+        SR-->>MCP: 3 tools discovered
+    and
+        MCP->>Neo: StdioClientTransport spawn
+        Neo-->>MCP: connected
+        MCP->>Neo: listTools
+        Neo-->>MCP: 3 tools discovered
+    end
+
+    deactivate MCP
+    MCP-->>API: 6 tool definitions
+
+    API->>Prompts: getSystemPrompt for skill
+    Prompts-->>API: system prompt with graph schema
+
+    Note over API: Start SSE stream to browser
+
+    API->>Bedrock: messages.create with streaming
+    activate Bedrock
+
+    loop Tool Use Loop up to 10 rounds
+        Bedrock-->>API: tool_use block
+        Bedrock-->>API: input_json_delta
+        Bedrock-->>API: content_block_stop
+
+        API-->>Browser: SSE Querying tool
+
+        API->>MCP: callTool neo4j read_neo4j_cypher
+        MCP->>Neo: callTool with name and args
+        Neo->>N4J: Cypher query via bolt
+        N4J-->>Neo: query results
+        Neo-->>MCP: tool result JSON
+        MCP-->>API: tool result
+
+        Note over API: May also call strategy-review tools
+
+        opt Text search tool called
+            API->>MCP: callTool search_chunks
+            MCP->>SR: callTool with name and args
+            SR->>OS: BM25 search
+            OS-->>SR: matching chunks
+            SR-->>MCP: tool result
+            MCP-->>API: tool result
+        end
+
+        opt Page image requested
+            API->>MCP: callTool get_page_image
+            MCP->>SR: callTool with name and args
+            SR->>Az: download blob
+            Az-->>SR: PNG bytes
+            SR-->>MCP: base64 image
+            MCP-->>API: tool result
+        end
+
+        API->>Bedrock: tool_result messages then resume
+    end
+
+    deactivate Bedrock
+
+    Bedrock-->>API: text_delta tokens streaming
+    API-->>Browser: SSE text content
+    Note over Browser: Tokens rendered via react-markdown
+
+    API-->>Browser: SSE DONE
+    Browser->>User: Response with citations and tables
+
+    Note over MCP,Neo: Shutdown on SIGTERM and SIGINT
+    </pre>
+
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            sequence: {
+                actorMargin: 30,
+                noteMargin: 10,
+                messageMargin: 30,
+                mirrorActors: false,
+                width: 150,
+                wrap: true,
+            },
+            themeVariables: {
+                darkMode: true,
+                background: '#161b22',
+                primaryColor: '#1f6feb',
+                primaryTextColor: '#e6edf3',
+                primaryBorderColor: '#388bfd',
+                lineColor: '#8b949e',
+                secondaryColor: '#21262d',
+                tertiaryColor: '#161b22',
+                noteBkgColor: '#2d333b',
+                noteTextColor: '#e6edf3',
+                noteBorderColor: '#444c56',
+                actorBkg: '#1f6feb',
+                actorTextColor: '#ffffff',
+                actorBorder: '#388bfd',
+                actorLineColor: '#8b949e',
+                signalColor: '#e6edf3',
+                signalTextColor: '#e6edf3',
+                labelBoxBkgColor: '#21262d',
+                labelBoxBorderColor: '#30363d',
+                labelTextColor: '#e6edf3',
+                loopTextColor: '#e6edf3',
+                activationBorderColor: '#388bfd',
+                activationBkgColor: '#1f6feb33',
+                sequenceNumberColor: '#ffffff',
+            },
+        });
+    </script>
+</body>
+</html>

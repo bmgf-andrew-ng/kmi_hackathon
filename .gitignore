@@ -21,6 +21,7 @@ poc/data/
 poc/web/node_modules/
 poc/web/.next/
 poc/web/.env.local
+poc/web/tsconfig.tsbuildinfo
 
 # PoC — IDE / tooling
 .venv/

@@ -409,6 +409,18 @@ Browser → Next.js API Route → AWS Bedrock (Claude Sonnet, streaming)
 
 The `@modelcontextprotocol/sdk` Client class spawns existing MCP servers as child processes — zero code duplication, dynamic tool discovery via `client.listTools()`, same tool signatures.
 
+### Sequence Diagram
+
+> Open [`poc/web/sequence-diagram.html`](web/sequence-diagram.html) in a browser to view the interactive diagram.
+
+**Key flows:**
+
+1. **First request** — MCP Manager spawns both MCP servers as child processes, discovers 6 tools
+2. **Every request** — API route selects system prompt by skill, sends to Bedrock with tool definitions
+3. **Tool use loop** — Bedrock returns `tool_use` blocks, API route calls MCP servers which hit data stores, returns `tool_result`, Bedrock continues
+4. **Streaming** — Text tokens flow back to the browser via SSE as they arrive
+5. **Shutdown** — `SIGTERM`/`SIGINT` triggers graceful cleanup of MCP child processes
+
 ### DevContainer-First Development Model
 
 ```

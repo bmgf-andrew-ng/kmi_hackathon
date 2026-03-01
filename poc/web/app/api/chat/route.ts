@@ -9,7 +9,7 @@
  * 6. Streams text tokens to the browser via SSE
  */
 
-import AnthropicBedrock from "@anthropic-ai/sdk/bedrock";
+import AnthropicBedrock from "@anthropic-ai/bedrock-sdk";
 import type {
   MessageParam,
   ContentBlockParam,
@@ -24,9 +24,16 @@ const MODEL_ID = "us.anthropic.claude-sonnet-4-20250514-v1:0";
 const MAX_TOOL_ROUNDS = 10;
 
 function getBedrock(): AnthropicBedrock {
+  const awsAccessKey = process.env.AWS_ACCESS_KEY_ID;
+  const awsSecretKey = process.env.AWS_SECRET_ACCESS_KEY;
+  if (!awsAccessKey || !awsSecretKey) {
+    throw new Error(
+      "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set"
+    );
+  }
   return new AnthropicBedrock({
-    awsAccessKey: process.env.AWS_ACCESS_KEY_ID,
-    awsSecretKey: process.env.AWS_SECRET_ACCESS_KEY,
+    awsAccessKey,
+    awsSecretKey,
     awsRegion: process.env.AWS_REGION || "us-east-1",
   });
 }
